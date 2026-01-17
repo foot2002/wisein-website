@@ -14,7 +14,7 @@ const services = [
       "취업 연계",
       "실무 프로젝트",
     ],
-    image: "/images/business03_1.jpg",
+    image: `${import.meta.env.BASE_URL}images/business03_1.jpg`,
   },
 ];
 

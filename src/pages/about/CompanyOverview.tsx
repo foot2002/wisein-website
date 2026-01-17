@@ -21,7 +21,7 @@ export default function CompanyOverview() {
           <div className="max-w-5xl mx-auto">
             <div className="aspect-video bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl overflow-hidden mb-16">
               <img
-                src="/images/company.jpg"
+                src={`${import.meta.env.BASE_URL}images/company.jpg`}
                 alt="회사 개요"
                 className="w-full h-full object-cover"
                 onError={(e) => {

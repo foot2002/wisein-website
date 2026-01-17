@@ -45,7 +45,7 @@ export default function VisionMission() {
           <div className="max-w-5xl mx-auto">
             <div className="aspect-video bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl overflow-hidden mb-16">
               <img
-                src="/images/vision_mission.jpg"
+                src={`${import.meta.env.BASE_URL}images/vision_mission.jpg`}
                 alt="비전 & 미션"
                 className="w-full h-full object-cover"
                 onError={(e) => {

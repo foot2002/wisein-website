@@ -62,7 +62,7 @@ export function Header() {
         {/* Logo */}
         <Link to="/" className="flex items-center gap-3">
           <img 
-            src="/images/wisein_logo.png" 
+            src={`${import.meta.env.BASE_URL}images/wisein_logo.png`}
             alt="Company Logo" 
             className="h-10 w-auto object-contain"
           />

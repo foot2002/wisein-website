@@ -14,7 +14,7 @@ const services = [
       "투자 포트폴리오",
       "맞춤 금융 추천",
     ],
-    image: "/images/business04_1.jpg",
+    image: `${import.meta.env.BASE_URL}images/business04_1.jpg`,
   },
 ];
 

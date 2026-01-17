@@ -14,7 +14,7 @@ const services = [
       "패널 운영",
       "리서치 컨설팅",
     ],
-    image: "/images/business02_1.jpg",
+    image: `${import.meta.env.BASE_URL}images/business02_1.jpg`,
   },
   {
     title: "Big Data Analysis",
@@ -25,7 +25,7 @@ const services = [
       "머신러닝",
       "시각화",
     ],
-    image: "/images/business02_2.jpg",
+    image: `${import.meta.env.BASE_URL}images/business02_2.jpg`,
   },
   {
     title: "Policy & Statistical Analysis",
@@ -36,7 +36,7 @@ const services = [
       "성과평가",
       "정책 제언",
     ],
-    image: "/images/business02_3.jpg",
+    image: `${import.meta.env.BASE_URL}images/business02_3.jpg`,
   },
 ];
 

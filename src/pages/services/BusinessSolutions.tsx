@@ -14,7 +14,7 @@ const services = [
       "인사이트 자동 생성",
       "대시보드 리포팅",
     ],
-    image: "/images/business01_1.jpg",
+    image: `${import.meta.env.BASE_URL}images/business01_1.jpg`,
   },
   {
     title: "Marketing Automation Solution",
@@ -25,7 +25,7 @@ const services = [
       "마케팅 캠페인 자동화",
       "ROI 분석 및 콘텐츠 마케팅 자동 고도화",
     ],
-    image: "/images/business01_2.jpg",
+    image: `${import.meta.env.BASE_URL}images/business01_2.jpg`,
   },
 ];
 
