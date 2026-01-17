@@ -5,15 +5,25 @@ import { getPressReleases } from "@/lib/adminStorage";
 
 export default function Press() {
   const [pressReleases, setPressReleases] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadPressReleases = async () => {
-      const data = await getPressReleases();
-      // 날짜순으로 정렬 (최신순)
-      const sorted = [...data].sort((a, b) => 
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-      setPressReleases(sorted);
+      try {
+        setIsLoading(true);
+        const data = await getPressReleases();
+        console.log('보도자료 데이터:', data); // 디버깅용
+        // 날짜순으로 정렬 (최신순)
+        const sorted = Array.isArray(data) ? [...data].sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        ) : [];
+        setPressReleases(sorted);
+      } catch (error) {
+        console.error('보도자료 로딩 오류:', error);
+        setPressReleases([]);
+      } finally {
+        setIsLoading(false);
+      }
     };
     loadPressReleases();
   }, []);
@@ -49,7 +59,20 @@ export default function Press() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pressReleases.map((release, index) => (
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={4} className="px-8 py-12 text-center text-muted-foreground">
+                        데이터를 불러오는 중...
+                      </td>
+                    </tr>
+                  ) : pressReleases.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-8 py-12 text-center text-muted-foreground">
+                        등록된 보도자료가 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    pressReleases.map((release, index) => (
                     <tr
                       key={index}
                       className="border-b border-border/50 hover:bg-secondary/30 transition-colors group cursor-pointer"
@@ -80,7 +103,8 @@ export default function Press() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

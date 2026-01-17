@@ -1002,6 +1002,7 @@ export async function getAnnouncements(): Promise<Announcement[]> {
       }));
     } catch (error) {
       console.error('Error fetching announcements from Supabase:', error);
+      // Supabase 오류 시 localStorage로 fallback
     }
   }
   
@@ -1161,6 +1162,7 @@ export async function getPressReleases(): Promise<PressRelease[]> {
       }));
     } catch (error) {
       console.error('Error fetching press releases from Supabase:', error);
+      // Supabase 오류 시 localStorage로 fallback
     }
   }
   

@@ -6,15 +6,25 @@ import { getAnnouncements } from "@/lib/adminStorage";
 
 export default function Announcements() {
   const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadAnnouncements = async () => {
-      const data = await getAnnouncements();
-      // 날짜순으로 정렬 (최신순)
-      const sorted = [...data].sort((a, b) => 
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-      setAnnouncements(sorted);
+      try {
+        setIsLoading(true);
+        const data = await getAnnouncements();
+        console.log('공지사항 데이터:', data); // 디버깅용
+        // 날짜순으로 정렬 (최신순)
+        const sorted = Array.isArray(data) ? [...data].sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        ) : [];
+        setAnnouncements(sorted);
+      } catch (error) {
+        console.error('공지사항 로딩 오류:', error);
+        setAnnouncements([]);
+      } finally {
+        setIsLoading(false);
+      }
     };
     loadAnnouncements();
   }, []);
@@ -50,7 +60,20 @@ export default function Announcements() {
                   </tr>
                 </thead>
                 <tbody>
-                  {announcements.map((announcement, index) => (
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={4} className="px-8 py-12 text-center text-muted-foreground">
+                        데이터를 불러오는 중...
+                      </td>
+                    </tr>
+                  ) : announcements.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-8 py-12 text-center text-muted-foreground">
+                        등록된 공지사항이 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    announcements.map((announcement, index) => (
                     <tr
                       key={announcement.id}
                       className="border-b border-border/50 hover:bg-secondary/30 transition-colors group"
@@ -81,7 +104,8 @@ export default function Announcements() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
