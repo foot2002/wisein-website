@@ -8,12 +8,15 @@ export default function Announcements() {
   const [announcements, setAnnouncements] = useState<any[]>([]);
 
   useEffect(() => {
-    const data = getAnnouncements();
-    // 날짜순으로 정렬 (최신순)
-    const sorted = [...data].sort((a, b) => 
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-    setAnnouncements(sorted);
+    const loadAnnouncements = async () => {
+      const data = await getAnnouncements();
+      // 날짜순으로 정렬 (최신순)
+      const sorted = [...data].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+      setAnnouncements(sorted);
+    };
+    loadAnnouncements();
   }, []);
   return (
     <Layout>

@@ -7,12 +7,15 @@ export default function Press() {
   const [pressReleases, setPressReleases] = useState<any[]>([]);
 
   useEffect(() => {
-    const data = getPressReleases();
-    // 날짜순으로 정렬 (최신순)
-    const sorted = [...data].sort((a, b) => 
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-    setPressReleases(sorted);
+    const loadPressReleases = async () => {
+      const data = await getPressReleases();
+      // 날짜순으로 정렬 (최신순)
+      const sorted = [...data].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+      setPressReleases(sorted);
+    };
+    loadPressReleases();
   }, []);
   return (
     <Layout>

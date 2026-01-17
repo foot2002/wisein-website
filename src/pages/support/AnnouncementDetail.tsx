@@ -14,11 +14,14 @@ export default function AnnouncementDetail() {
 
   useEffect(() => {
     if (id) {
-      const announcements = getAnnouncements();
-      const found = announcements.find((a) => a.id === parseInt(id));
-      if (found) {
-        setAnnouncement(found);
-      }
+      const loadAnnouncement = async () => {
+        const announcements = await getAnnouncements();
+        const found = announcements.find((a) => a.id === parseInt(id));
+        if (found) {
+          setAnnouncement(found);
+        }
+      };
+      loadAnnouncement();
     }
   }, [id]);
 

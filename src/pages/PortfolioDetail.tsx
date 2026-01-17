@@ -21,10 +21,13 @@ export default function PortfolioDetail() {
 
   useEffect(() => {
     if (id) {
-      const projectData = getPortfolioItemById(parseInt(id));
-      if (projectData) {
-        setProject(projectData);
-      }
+      const loadProject = async () => {
+        const projectData = await getPortfolioItemById(parseInt(id));
+        if (projectData) {
+          setProject(projectData);
+        }
+      };
+      loadProject();
     }
   }, [id]);
 
@@ -87,16 +90,18 @@ export default function PortfolioDetail() {
               <div className="text-lg text-foreground leading-relaxed mb-8">
                 {project.description}
               </div>
-              <div className="flex flex-wrap gap-2 mt-8">
-                {project.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-4 py-2 bg-secondary text-secondary-foreground text-sm rounded-full"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
+              {project.tags && project.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-8">
+                  {project.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-4 py-2 bg-secondary text-secondary-foreground text-sm rounded-full"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="mt-8 pt-8 border-t border-border text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />

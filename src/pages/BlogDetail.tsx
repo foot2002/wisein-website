@@ -14,10 +14,13 @@ export default function BlogDetail() {
 
   useEffect(() => {
     if (id) {
-      const postData = getBlogPostById(parseInt(id));
-      if (postData) {
-        setPost(postData);
-      }
+      const loadPost = async () => {
+        const postData = await getBlogPostById(parseInt(id));
+        if (postData) {
+          setPost(postData);
+        }
+      };
+      loadPost();
     }
   }, [id]);
 
