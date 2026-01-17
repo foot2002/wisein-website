@@ -13,21 +13,29 @@ export default function AdminDashboard() {
     pendingInquiries: 0,
     newsletter: 0,
   });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadStats = async () => {
-      const portfolio = await getPortfolioItems();
-      const blog = await getBlogPosts();
-      const inquiries = await getInquiries();
-      const newsletter = await getNewsletterSubscribers();
-      
-      setStats({
-        portfolio: portfolio.length,
-        blog: blog.length,
-        inquiries: inquiries.length,
-        pendingInquiries: inquiries.filter((i) => i.status === "pending").length,
-        newsletter: newsletter.length,
-      });
+      try {
+        setLoading(true);
+        const portfolio = await getPortfolioItems();
+        const blog = await getBlogPosts();
+        const inquiries = await getInquiries();
+        const newsletter = await getNewsletterSubscribers();
+        
+        setStats({
+          portfolio: Array.isArray(portfolio) ? portfolio.length : 0,
+          blog: Array.isArray(blog) ? blog.length : 0,
+          inquiries: Array.isArray(inquiries) ? inquiries.length : 0,
+          pendingInquiries: Array.isArray(inquiries) ? inquiries.filter((i) => i.status === "pending").length : 0,
+          newsletter: Array.isArray(newsletter) ? newsletter.length : 0,
+        });
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      } finally {
+        setLoading(false);
+      }
     };
     
     loadStats();
@@ -70,6 +78,19 @@ export default function AdminDashboard() {
       color: "bg-pink-500",
     },
   ];
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">대시보드</h1>
+            <p className="text-muted-foreground">데이터를 불러오는 중...</p>
+          </div>
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
