@@ -454,11 +454,15 @@ export async function savePortfolioItem(item: Omit<PortfolioItem, "id" | "create
       localItems.push(newItem);
       localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(localItems));
       
+      console.log('✅ Portfolio saved to Supabase:', newItem.id);
       return newItem;
     } catch (error) {
-      console.error('Error saving portfolio to Supabase:', error);
+      console.error('❌ Error saving portfolio to Supabase:', error);
+      console.error('   Falling back to localStorage');
       // Fallback to localStorage
     }
+  } else {
+    console.warn('⚠️ Supabase not enabled. Saving portfolio to localStorage only.');
   }
   
   // Fallback to localStorage
@@ -673,10 +677,14 @@ export async function saveBlogPost(post: Omit<BlogPost, "id" | "createdAt" | "up
       localPosts.push(newPost);
       localStorage.setItem(STORAGE_KEYS.BLOG, JSON.stringify(localPosts));
       
+      console.log('✅ Blog saved to Supabase:', newPost.id);
       return newPost;
     } catch (error) {
-      console.error('Error saving blog to Supabase:', error);
+      console.error('❌ Error saving blog to Supabase:', error);
+      console.error('   Falling back to localStorage');
     }
+  } else {
+    console.warn('⚠️ Supabase not enabled. Saving blog to localStorage only.');
   }
   
   const posts = await getBlogPosts();
@@ -1040,10 +1048,14 @@ export async function saveAnnouncement(announcement: Omit<Announcement, "id" | "
       localAnnouncements.push(newAnnouncement);
       localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(localAnnouncements));
       
+      console.log('✅ Announcement saved to Supabase:', newAnnouncement.id);
       return newAnnouncement;
     } catch (error) {
-      console.error('Error saving announcement to Supabase:', error);
+      console.error('❌ Error saving announcement to Supabase:', error);
+      console.error('   Falling back to localStorage');
     }
+  } else {
+    console.warn('⚠️ Supabase not enabled. Saving announcement to localStorage only.');
   }
   
   const announcements = await getAnnouncements();
@@ -1200,10 +1212,14 @@ export async function savePressRelease(press: Omit<PressRelease, "id" | "created
       localPressReleases.push(newPress);
       localStorage.setItem(STORAGE_KEYS.PRESS, JSON.stringify(localPressReleases));
       
+      console.log('✅ Press release saved to Supabase:', newPress.id);
       return newPress;
     } catch (error) {
-      console.error('Error saving press release to Supabase:', error);
+      console.error('❌ Error saving press release to Supabase:', error);
+      console.error('   Falling back to localStorage');
     }
+  } else {
+    console.warn('⚠️ Supabase not enabled. Saving press release to localStorage only.');
   }
   
   const pressReleases = await getPressReleases();
