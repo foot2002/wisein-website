@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataVision | 데이터와 AI로 여는 비즈니스의 세계</title>
+    <script>
+      // GitHub Pages에서 React Router를 위한 fallback
+      // Single Page Application을 위한 404.html
+      // 모든 경로를 index.html로 리다이렉트
+      var path = window.location.pathname;
+      var segments = path.split('/').filter(Boolean);
+      
+      // GitHub Pages의 base path 제거
+      if (segments[0] === 'wisein-website') {
+        segments.shift();
+      }
+      
+      // index.html로 리다이렉트 (해시 라우팅 사용)
+      var newPath = '/wisein-website/' + (segments.length > 0 ? '#' + '/' + segments.join('/') : '');
+      window.location.replace(newPath);
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif;">
+        <p>페이지를 불러오는 중...</p>
+      </div>
+    </div>
+  </body>
+</html>
