@@ -4,8 +4,20 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
-  base: mode === "production" ? "/wisein-website/" : "/",
+export default defineConfig(({ mode }) => {
+  // Vercel 배포인지 확인 (환경 변수로 구분)
+  const isVercel = process.env.VERCEL === '1';
+  // GitHub Pages인지 확인
+  const isGitHubPages = process.env.GITHUB_PAGES === '1';
+  
+  // base path 설정
+  let base = '/';
+  if (mode === "production" && isGitHubPages) {
+    base = "/wisein-website/";
+  }
+  
+  return {
+  base,
   server: {
     host: "::",
     port: 8080,
@@ -25,4 +37,5 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-}));
+  };
+});
