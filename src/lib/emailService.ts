@@ -10,8 +10,10 @@ export interface EmailData {
 
 export async function sendInquiryReplyEmail(data: EmailData): Promise<{ success: boolean; error?: string }> {
   try {
-    // Vite 프록시를 통해 같은 포트에서 API 호출
-    const apiUrl = import.meta.env.VITE_EMAIL_API_URL || '/api/send-email';
+    // Email server runs on port 3001
+    // Use environment variable if set, otherwise default to localhost:3001
+    const emailServerUrl = import.meta.env.VITE_EMAIL_API_URL || 'http://localhost:3001';
+    const apiUrl = `${emailServerUrl}/api/send-email`;
     
     console.log('Sending email to:', apiUrl);
     console.log('Email data:', { to: data.to, name: data.name });

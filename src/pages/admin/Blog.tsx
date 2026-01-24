@@ -105,7 +105,13 @@ export default function AdminBlog() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    const data = {
+    // CRITICAL: Ensure we're in CREATE mode (not EDIT mode)
+    const isEditMode = !!editingPost;
+    console.log('📝 Form submit mode:', isEditMode ? 'EDIT' : 'CREATE');
+    console.log('   editingPost:', editingPost ? { id: editingPost.id, title: editingPost.title } : null);
+    
+    // Create data object - explicitly exclude id
+    const data: Record<string, any> = {
       category: formData.get("category") as string,
       title: formData.get("title") as string,
       excerpt: formData.get("excerpt") as string,
@@ -115,16 +121,67 @@ export default function AdminBlog() {
       readTime: formData.get("readTime") as string,
       imageUrl: formData.get("imageUrl") as string || undefined,
     };
-
-    if (editingPost) {
-      await updateBlogPost(editingPost.id, data);
-    } else {
-      await saveBlogPost(data);
+    
+    // Handle sort_order
+    const sortOrderValue = formData.get("sortOrder");
+    if (sortOrderValue !== null && sortOrderValue !== '') {
+      const sortOrder = Number(sortOrderValue);
+      if (!isNaN(sortOrder)) {
+        data.sortOrder = sortOrder;
+      }
     }
+    
+    // Handle published_at
+    const publishedAtValue = formData.get("publishedAt");
+    if (publishedAtValue !== null && publishedAtValue !== '') {
+      // Convert datetime-local to ISO string
+      data.publishedAt = new Date(publishedAtValue).toISOString();
+    }
+    
+    // CRITICAL: Verify data object does NOT contain id
+    if ('id' in data) {
+      console.error('❌ CRITICAL: data object contains id field!', data);
+      alert('오류: 데이터 객체에 id 필드가 포함되어 있습니다. 이는 발생하면 안 됩니다.');
+      return;
+    }
+    
+    // Explicitly remove id if it somehow exists
+    delete (data as any).id;
+    delete (data as any).createdAt;
+    delete (data as any).updatedAt;
+    
+    console.log('📤 Form data prepared:', {
+      keys: Object.keys(data),
+      hasId: 'id' in data,
+      isEditMode,
+    });
 
-    setShowForm(false);
-    setEditingPost(null);
-    loadPosts();
+    try {
+      if (isEditMode && editingPost) {
+        // EDIT mode: Use UPDATE (id is used for WHERE clause, not in payload)
+        console.log('✏️ Updating blog post with id:', editingPost.id);
+        await updateBlogPost(editingPost.id, data);
+        alert('블로그 포스트가 성공적으로 수정되었습니다.');
+      } else {
+        // CREATE mode: Use INSERT (NO id should be included)
+        console.log('➕ Creating new blog post (INSERT - NO id)');
+        console.log('   Data being passed to saveBlogPost:', {
+          keys: Object.keys(data),
+          hasId: 'id' in data,
+        });
+        await saveBlogPost(data);
+        alert('블로그 포스트가 성공적으로 등록되었습니다.');
+      }
+
+      setShowForm(false);
+      setEditingPost(null);
+      loadPosts();
+    } catch (error: any) {
+      console.error('❌ Failed to save blog post:', error);
+      const errorMessage = error?.message || error?.error?.message || '블로그 포스트 저장 중 오류가 발생했습니다.';
+      alert(`오류: ${errorMessage}\n\nSupabase DB에 저장되지 않았습니다.`);
+      // Do NOT close the form on error - let user retry
+    }
   };
 
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -368,6 +425,37 @@ export default function AdminBlog() {
                     <p className="text-xs text-muted-foreground mt-1">
                       이미지를 선택하면 Supabase Storage에 업로드됩니다. (최대 10MB)
                     </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        정렬 순서 (낮을수록 먼저 표시)
+                      </label>
+                      <Input
+                        name="sortOrder"
+                        type="number"
+                        defaultValue={editingPost?.sortOrder ?? 0}
+                        placeholder="0"
+                        className="w-full"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        기본값: 0 (자동 정렬, 최신순)
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        발행일시
+                      </label>
+                      <Input
+                        name="publishedAt"
+                        type="datetime-local"
+                        defaultValue={editingPost?.publishedAt ? new Date(editingPost.publishedAt).toISOString().slice(0, 16) : ""}
+                        className="w-full"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        비워두면 현재 시간으로 설정됩니다
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-4 mt-6">

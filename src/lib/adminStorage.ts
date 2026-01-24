@@ -10,6 +10,8 @@ export interface PortfolioItem {
   year: string;
   tags: string[];
   imageUrl?: string;
+  publishedAt?: string;
+  sortOrder?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -24,6 +26,8 @@ export interface BlogPost {
   date: string;
   readTime: string;
   imageUrl?: string;
+  publishedAt?: string;
+  sortOrder?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +52,8 @@ export interface Announcement {
   date: string;
   category: string;
   content: string;
+  publishedAt?: string;
+  sortOrder?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -58,6 +64,8 @@ export interface PressRelease {
   date: string;
   source: string;
   url: string;
+  publishedAt?: string;
+  sortOrder?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -349,15 +357,24 @@ export function initializeStorage() {
 
 // Portfolio functions
 export async function getPortfolioItems(): Promise<PortfolioItem[]> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('portfolio')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot fetch portfolio items.');
+    console.error('❌', error.message);
+    throw error;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('portfolio')
+      .select('*')
+      .order('sort_order', { ascending: true })
+      .order('published_at', { ascending: false });
+    
+    if (error) {
+      console.error('❌ Supabase SELECT error:', error);
+      throw error;
+    }
+    
       // Transform database format to app format
       return (data || []).map((item: any) => ({
         id: item.id,
@@ -368,18 +385,16 @@ export async function getPortfolioItems(): Promise<PortfolioItem[]> {
         year: item.year,
         tags: item.tags || [],
         imageUrl: item.image_url,
+        publishedAt: item.published_at,
+        sortOrder: item.sort_order ?? 0,
         createdAt: item.created_at,
         updatedAt: item.updated_at,
       }));
-    } catch (error) {
-      console.error('Error fetching portfolio from Supabase:', error);
-      // Fallback to localStorage
-    }
+  } catch (error) {
+    console.error('❌ Error fetching portfolio from Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
   }
-  
-  // Fallback to localStorage
-  const data = localStorage.getItem(STORAGE_KEYS.PORTFOLIO);
-  return data ? JSON.parse(data) : [];
 }
 
 export async function getPortfolioItemById(id: number): Promise<PortfolioItem | undefined> {
@@ -403,6 +418,8 @@ export async function getPortfolioItemById(id: number): Promise<PortfolioItem | 
         year: data.year,
         tags: data.tags || [],
         imageUrl: data.image_url,
+        publishedAt: data.published_at,
+        sortOrder: data.sort_order ?? 0,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -418,158 +435,222 @@ export async function getPortfolioItemById(id: number): Promise<PortfolioItem | 
 }
 
 export async function savePortfolioItem(item: Omit<PortfolioItem, "id" | "createdAt" | "updatedAt">): Promise<PortfolioItem> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('portfolio')
-        .insert({
-          category: item.category,
-          client: item.client,
-          title: item.title,
-          description: item.description,
-          year: item.year,
-          tags: item.tags,
-          image_url: item.imageUrl,
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      const newItem: PortfolioItem = {
-        id: data.id,
-        category: data.category,
-        client: data.client,
-        title: data.title,
-        description: data.description,
-        year: data.year,
-        tags: data.tags || [],
-        imageUrl: data.image_url,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
-      
-      // Also save to localStorage as backup
-      const localItems = await getPortfolioItems();
-      localItems.push(newItem);
-      localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(localItems));
-      
-      console.log('✅ Portfolio saved to Supabase:', newItem.id);
-      return newItem;
-    } catch (error) {
-      console.error('❌ Error saving portfolio to Supabase:', error);
-      console.error('   Falling back to localStorage');
-      // Fallback to localStorage
-    }
-  } else {
-    console.warn('⚠️ Supabase not enabled. Saving portfolio to localStorage only.');
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot save portfolio item.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  // Fallback to localStorage
-  const items = await getPortfolioItems();
-  const newItem: PortfolioItem = {
-    ...item,
-    id: items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  items.push(newItem);
-  localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(items));
-  return newItem;
+
+  try {
+    // CRITICAL: Ensure input object does NOT contain id
+    if ('id' in item && (item as any).id !== undefined) {
+      const error = new Error('CRITICAL: Input item object contains id field.');
+      console.error('❌', error.message, { itemKeys: Object.keys(item) });
+      throw error;
+    }
+
+    // Create INSERT payload with ONLY editable fields
+    // DO NOT include: id, created_at, updated_at
+    const insertPayload: Record<string, any> = {};
+    if (item.category !== undefined) insertPayload.category = item.category;
+    if (item.client !== undefined) insertPayload.client = item.client;
+    if (item.title !== undefined) insertPayload.title = item.title;
+    if (item.description !== undefined) insertPayload.description = item.description;
+    if (item.year !== undefined) insertPayload.year = item.year;
+    if (item.tags !== undefined) insertPayload.tags = item.tags || [];
+    
+    // CRITICAL: Handle image_url - only include if imageUrl is provided and non-empty
+    if (item.imageUrl !== undefined && item.imageUrl !== null && item.imageUrl.trim() !== '') {
+      insertPayload.image_url = item.imageUrl.trim();
+      console.log('📸 Including image_url in INSERT payload:', insertPayload.image_url.substring(0, 80) + '...');
+    } else {
+      console.warn('⚠️ imageUrl is missing or empty, image_url will be NULL in DB');
+    }
+    
+    // Handle published_at: default to NOW() if not provided
+    if (item.publishedAt !== undefined && item.publishedAt !== null && item.publishedAt.trim() !== '') {
+      insertPayload.published_at = item.publishedAt;
+    } else {
+      // DB will use DEFAULT NOW() if not provided
+    }
+    
+    // Handle sort_order: default to 0 if not provided
+    if (item.sortOrder !== undefined && item.sortOrder !== null) {
+      insertPayload.sort_order = Number(item.sortOrder) || 0;
+    } else {
+      // DB will use DEFAULT 0 if not provided
+    }
+    
+    // Log final payload for debugging
+    console.log('📦 Final INSERT payload keys:', Object.keys(insertPayload));
+    console.log('📦 INSERT payload has image_url:', 'image_url' in insertPayload);
+
+    // CRITICAL: Verify id is NOT in payload
+    if ('id' in insertPayload || 'created_at' in insertPayload || 'updated_at' in insertPayload) {
+      const error = new Error('CRITICAL: Prohibited fields detected in insert payload');
+      console.error('❌', error.message, insertPayload);
+      throw error;
+    }
+
+    const { data, error } = await supabase
+      .from('portfolio')
+      .insert(insertPayload)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Supabase INSERT error:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      const error = new Error('No data returned from Supabase after insert');
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const newItem: PortfolioItem = {
+      id: data.id,
+      category: data.category,
+      client: data.client,
+      title: data.title,
+      description: data.description,
+      year: data.year,
+      tags: data.tags || [],
+      imageUrl: data.image_url,
+      publishedAt: data.published_at,
+      sortOrder: data.sort_order ?? 0,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    console.log('✅ Portfolio saved to Supabase (id generated by DB):', newItem.id);
+    return newItem;
+  } catch (error) {
+    console.error('❌ Error saving portfolio to Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
+  }
 }
 
 export async function updatePortfolioItem(id: number, updates: Partial<PortfolioItem>): Promise<PortfolioItem | null> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const updateData: any = {};
-      if (updates.category !== undefined) updateData.category = updates.category;
-      if (updates.client !== undefined) updateData.client = updates.client;
-      if (updates.title !== undefined) updateData.title = updates.title;
-      if (updates.description !== undefined) updateData.description = updates.description;
-      if (updates.year !== undefined) updateData.year = updates.year;
-      if (updates.tags !== undefined) updateData.tags = updates.tags;
-      if (updates.imageUrl !== undefined) updateData.image_url = updates.imageUrl;
-      
-      const { data, error } = await supabase
-        .from('portfolio')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      if (!data) return null;
-      
-      const updatedItem: PortfolioItem = {
-        id: data.id,
-        category: data.category,
-        client: data.client,
-        title: data.title,
-        description: data.description,
-        year: data.year,
-        tags: data.tags || [],
-        imageUrl: data.image_url,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
-      
-      // Also update localStorage
-      const localItems = await getPortfolioItems();
-      const localIndex = localItems.findIndex((item) => item.id === id);
-      if (localIndex !== -1) {
-        localItems[localIndex] = updatedItem;
-        localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(localItems));
-      }
-      
-      return updatedItem;
-    } catch (error) {
-      console.error('Error updating portfolio in Supabase:', error);
-      // Fallback to localStorage
-    }
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot update portfolio item.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  // Fallback to localStorage
-  const items = await getPortfolioItems();
-  const index = items.findIndex((item) => item.id === id);
-  if (index === -1) return null;
-  
-  items[index] = {
-    ...items[index],
-    ...updates,
-    id,
-    updatedAt: new Date().toISOString(),
-  };
-  localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(items));
-  return items[index];
+
+  try {
+    // Create UPDATE payload with ONLY editable fields
+    // DO NOT include: id, created_at, updated_at (id is used only in .eq())
+    const updateData: Record<string, any> = {};
+    if (updates.category !== undefined) updateData.category = updates.category;
+    if (updates.client !== undefined) updateData.client = updates.client;
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.description !== undefined) updateData.description = updates.description;
+    if (updates.year !== undefined) updateData.year = updates.year;
+    if (updates.tags !== undefined) updateData.tags = updates.tags;
+    
+    // CRITICAL: Handle image_url - only include if imageUrl is provided and non-empty
+    if (updates.imageUrl !== undefined) {
+      if (updates.imageUrl !== null && updates.imageUrl.trim() !== '') {
+        updateData.image_url = updates.imageUrl.trim();
+        console.log('📸 Including image_url in UPDATE:', updateData.image_url);
+      } else {
+        // Explicitly set to null if empty string is provided
+        updateData.image_url = null;
+        console.log('📸 Setting image_url to NULL in UPDATE');
+      }
+    }
+    
+    // Handle published_at
+    if (updates.publishedAt !== undefined) {
+      if (updates.publishedAt !== null && updates.publishedAt.trim() !== '') {
+        updateData.published_at = updates.publishedAt;
+      } else {
+        updateData.published_at = null;
+      }
+    }
+    
+    // Handle sort_order
+    if (updates.sortOrder !== undefined) {
+      updateData.sort_order = Number(updates.sortOrder) || 0;
+    }
+
+    // CRITICAL: Verify id is NOT in update payload
+    if ('id' in updateData || 'created_at' in updateData || 'updated_at' in updateData) {
+      const error = new Error('CRITICAL: Prohibited fields detected in update payload');
+      console.error('❌', error.message, updateData);
+      throw error;
+    }
+    
+    const { data, error } = await supabase
+      .from('portfolio')
+      .update(updateData)
+      .eq('id', id)  // id used ONLY here, not in payload
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Supabase UPDATE error:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      const error = new Error(`Portfolio item with id ${id} not found`);
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const updatedItem: PortfolioItem = {
+      id: data.id,
+      category: data.category,
+      client: data.client,
+      title: data.title,
+      description: data.description,
+      year: data.year,
+      tags: data.tags || [],
+      imageUrl: data.image_url,
+      publishedAt: data.published_at,
+      sortOrder: data.sort_order ?? 0,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    console.log('✅ Portfolio updated in Supabase:', updatedItem.id);
+    return updatedItem;
+  } catch (error) {
+    console.error('❌ Error updating portfolio in Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
+  }
 }
 
 export async function deletePortfolioItem(id: number): Promise<boolean> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const { error } = await supabase
-        .from('portfolio')
-        .delete()
-        .eq('id', id);
-      
-      if (error) throw error;
-      
-      // Also delete from localStorage
-      const localItems = await getPortfolioItems();
-      const filtered = localItems.filter((item) => item.id !== id);
-      localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(filtered));
-      
-      return true;
-    } catch (error) {
-      console.error('Error deleting portfolio from Supabase:', error);
-      // Fallback to localStorage
-    }
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot delete portfolio item.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  // Fallback to localStorage
-  const items = await getPortfolioItems();
-  const filtered = items.filter((item) => item.id !== id);
-  localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(filtered));
-  return filtered.length < items.length;
+
+  try {
+    const { error } = await supabase
+      .from('portfolio')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error('❌ Supabase DELETE error:', error);
+      throw error;
+    }
+    
+    console.log('✅ Portfolio item deleted from Supabase:', id);
+    return true;
+  } catch (error) {
+    console.error('❌ Error deleting portfolio from Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
+  }
 }
 
 // Blog functions
@@ -579,7 +660,8 @@ export async function getBlogPosts(): Promise<BlogPost[]> {
       const { data, error } = await supabase
         .from('blog')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('sort_order', { ascending: true })
+        .order('published_at', { ascending: false });
       
       if (error) throw error;
       
@@ -593,6 +675,8 @@ export async function getBlogPosts(): Promise<BlogPost[]> {
         date: item.date,
         readTime: item.read_time,
         imageUrl: item.image_url,
+        publishedAt: item.published_at,
+        sortOrder: item.sort_order ?? 0,
         createdAt: item.created_at,
         updatedAt: item.updated_at,
       }));
@@ -627,6 +711,8 @@ export async function getBlogPostById(id: number): Promise<BlogPost | undefined>
         date: data.date,
         readTime: data.read_time,
         imageUrl: data.image_url,
+        publishedAt: data.published_at,
+        sortOrder: data.sort_order ?? 0,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -640,127 +726,227 @@ export async function getBlogPostById(id: number): Promise<BlogPost | undefined>
 }
 
 export async function saveBlogPost(post: Omit<BlogPost, "id" | "createdAt" | "updatedAt">): Promise<BlogPost> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('blog')
-        .insert({
-          category: post.category,
-          title: post.title,
-          excerpt: post.excerpt,
-          content: post.content,
-          author: post.author,
-          date: post.date,
-          read_time: post.readTime,
-          image_url: post.imageUrl,
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      const newPost: BlogPost = {
-        id: data.id,
-        category: data.category,
-        title: data.title,
-        excerpt: data.excerpt,
-        content: data.content,
-        author: data.author,
-        date: data.date,
-        readTime: data.read_time,
-        imageUrl: data.image_url,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
-      
-      const localPosts = await getBlogPosts();
-      localPosts.push(newPost);
-      localStorage.setItem(STORAGE_KEYS.BLOG, JSON.stringify(localPosts));
-      
-      console.log('✅ Blog saved to Supabase:', newPost.id);
-      return newPost;
-    } catch (error) {
-      console.error('❌ Error saving blog to Supabase:', error);
-      console.error('   Falling back to localStorage');
-    }
-  } else {
-    console.warn('⚠️ Supabase not enabled. Saving blog to localStorage only.');
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot save blog post.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  const posts = await getBlogPosts();
-  const newPost: BlogPost = {
-    ...post,
-    id: posts.length > 0 ? Math.max(...posts.map((p) => p.id)) + 1 : 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  posts.push(newPost);
-  localStorage.setItem(STORAGE_KEYS.BLOG, JSON.stringify(posts));
-  return newPost;
+
+  try {
+    // CRITICAL: Explicitly exclude 'id' from the insert payload
+    // DO NOT spread objects that might contain 'id' (e.g. {...post})
+    // DO NOT include id, created_at, updated_at (Supabase generates these automatically)
+    // DO NOT generate id on the client in any form
+    
+    // Safety check: Ensure the post object itself doesn't have an id (even if TypeScript says it shouldn't)
+    if ('id' in post && (post as any).id !== undefined) {
+      const error = new Error('CRITICAL: Input post object contains id field. This should never happen.');
+      console.error('❌', error.message, { postKeys: Object.keys(post) });
+      throw error;
+    }
+    
+    // Create insert payload with ONLY: title, content, image_url
+    // Explicitly extract only these fields to ensure 'id' is never included
+    const insertPayload: Record<string, any> = {};
+    
+    // ONLY include these fields in the insert payload (as per requirements)
+    if (post.title !== undefined && post.title !== null) {
+      insertPayload.title = String(post.title);
+    }
+    if (post.content !== undefined) {
+      insertPayload.content = post.content || null;
+    }
+    if (post.imageUrl !== undefined) {
+      insertPayload.image_url = post.imageUrl || null;
+    }
+    
+    // CRITICAL: Explicitly verify 'id' is NOT in the payload
+    if ('id' in insertPayload) {
+      const error = new Error('CRITICAL: id field detected in insert payload. This should never happen.');
+      console.error('❌', error.message, insertPayload);
+      throw error;
+    }
+    
+    // Double-check: ensure no id property exists (even if undefined)
+    delete (insertPayload as any).id;
+    delete (insertPayload as any).created_at;
+    delete (insertPayload as any).updated_at;
+    
+    // FINAL VERIFICATION: Create a completely isolated payload object
+    // This ensures no prototype pollution or hidden properties
+    const finalPayload: Record<string, any> = {};
+    if (insertPayload.title !== undefined) finalPayload.title = insertPayload.title;
+    if (insertPayload.content !== undefined) finalPayload.content = insertPayload.content;
+    if (insertPayload.image_url !== undefined) finalPayload.image_url = insertPayload.image_url;
+    
+    // Handle published_at: default to NOW() if not provided
+    if (post.publishedAt !== undefined && post.publishedAt !== null && post.publishedAt.trim() !== '') {
+      finalPayload.published_at = post.publishedAt;
+    }
+    
+    // Handle sort_order: default to 0 if not provided
+    if (post.sortOrder !== undefined && post.sortOrder !== null) {
+      finalPayload.sort_order = Number(post.sortOrder) || 0;
+    }
+    
+    // CRITICAL: Final check before INSERT
+    const payloadKeys = Object.keys(finalPayload);
+    const hasId = 'id' in finalPayload || payloadKeys.includes('id');
+    const hasCreatedAt = 'created_at' in finalPayload || payloadKeys.includes('created_at');
+    const hasUpdatedAt = 'updated_at' in finalPayload || payloadKeys.includes('updated_at');
+    
+    if (hasId || hasCreatedAt || hasUpdatedAt) {
+      const error = new Error(`CRITICAL: Prohibited fields detected in final payload: id=${hasId}, created_at=${hasCreatedAt}, updated_at=${hasUpdatedAt}`);
+      console.error('❌', error.message);
+      console.error('   Final payload:', JSON.stringify(finalPayload, null, 2));
+      console.error('   Payload keys:', payloadKeys);
+      throw error;
+    }
+    
+    // DEBUG: Log the exact payload that will be sent to Supabase
+    console.log('🔍 FINAL VERIFICATION - Payload before INSERT:');
+    console.log('   Payload object:', JSON.stringify(finalPayload, null, 2));
+    console.log('   Payload keys:', payloadKeys);
+    console.log('   Has id?', hasId);
+    console.log('   Has created_at?', hasCreatedAt);
+    console.log('   Has updated_at?', hasUpdatedAt);
+    console.log('   Payload type:', typeof finalPayload);
+    console.log('   Payload constructor:', finalPayload.constructor?.name);
+    
+    // Serialize and parse to ensure no hidden properties
+    const serializedPayload = JSON.parse(JSON.stringify(finalPayload));
+    console.log('   Serialized payload:', JSON.stringify(serializedPayload, null, 2));
+    console.log('   Serialized keys:', Object.keys(serializedPayload));
+    
+    if ('id' in serializedPayload || Object.keys(serializedPayload).includes('id')) {
+      const error = new Error('CRITICAL: id detected in serialized payload');
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const { data, error } = await supabase
+      .from('blog')
+      .insert(serializedPayload)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Supabase INSERT error:', error);
+      console.error('   Insert payload was:', insertPayload);
+      throw error;
+    }
+    
+    if (!data) {
+      const error = new Error('No data returned from Supabase after insert');
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    // Verify the returned data has an id (generated by Supabase)
+    if (!data.id) {
+      const error = new Error('Supabase did not return an id after insert');
+      console.error('❌', error.message, data);
+      throw error;
+    }
+    
+    const newPost: BlogPost = {
+      id: data.id,
+      category: data.category,
+      title: data.title,
+      excerpt: data.excerpt,
+      content: data.content,
+      author: data.author,
+      date: data.date,
+      readTime: data.read_time,
+      imageUrl: data.image_url,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    console.log('✅ Blog saved to Supabase (id generated by DB):', newPost.id);
+    return newPost;
+  } catch (error) {
+    console.error('❌ Error saving blog to Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error so the UI can handle it
+    throw error;
+  }
 }
 
 export async function updateBlogPost(id: number, updates: Partial<BlogPost>): Promise<BlogPost | null> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const updateData: any = {};
-      if (updates.category !== undefined) updateData.category = updates.category;
-      if (updates.title !== undefined) updateData.title = updates.title;
-      if (updates.excerpt !== undefined) updateData.excerpt = updates.excerpt;
-      if (updates.content !== undefined) updateData.content = updates.content;
-      if (updates.author !== undefined) updateData.author = updates.author;
-      if (updates.date !== undefined) updateData.date = updates.date;
-      if (updates.readTime !== undefined) updateData.read_time = updates.readTime;
-      if (updates.imageUrl !== undefined) updateData.image_url = updates.imageUrl;
-      
-      const { data, error } = await supabase
-        .from('blog')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      if (!data) return null;
-      
-      const updatedPost: BlogPost = {
-        id: data.id,
-        category: data.category,
-        title: data.title,
-        excerpt: data.excerpt,
-        content: data.content,
-        author: data.author,
-        date: data.date,
-        readTime: data.read_time,
-        imageUrl: data.image_url,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
-      
-      const localPosts = await getBlogPosts();
-      const localIndex = localPosts.findIndex((post) => post.id === id);
-      if (localIndex !== -1) {
-        localPosts[localIndex] = updatedPost;
-        localStorage.setItem(STORAGE_KEYS.BLOG, JSON.stringify(localPosts));
-      }
-      
-      return updatedPost;
-    } catch (error) {
-      console.error('Error updating blog in Supabase:', error);
-    }
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot update blog post.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  const posts = await getBlogPosts();
-  const index = posts.findIndex((post) => post.id === id);
-  if (index === -1) return null;
-  
-  posts[index] = {
-    ...posts[index],
-    ...updates,
-    id,
-    updatedAt: new Date().toISOString(),
-  };
-  localStorage.setItem(STORAGE_KEYS.BLOG, JSON.stringify(posts));
-  return posts[index];
+
+  try {
+    // Update payload: Only include fields that should be updated
+    // DO NOT include: id, created_at, updated_at (Supabase handles these)
+    const updateData: any = {};
+    if (updates.category !== undefined) updateData.category = updates.category;
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.excerpt !== undefined) updateData.excerpt = updates.excerpt;
+    if (updates.content !== undefined) updateData.content = updates.content;
+    if (updates.author !== undefined) updateData.author = updates.author;
+    if (updates.date !== undefined) updateData.date = updates.date;
+    if (updates.readTime !== undefined) updateData.read_time = updates.readTime;
+    if (updates.imageUrl !== undefined) updateData.image_url = updates.imageUrl;
+    
+    // Handle published_at
+    if (updates.publishedAt !== undefined) {
+      if (updates.publishedAt !== null && updates.publishedAt.trim() !== '') {
+        updateData.published_at = updates.publishedAt;
+      } else {
+        updateData.published_at = null;
+      }
+    }
+    
+    // Handle sort_order
+    if (updates.sortOrder !== undefined) {
+      updateData.sort_order = Number(updates.sortOrder) || 0;
+    }
+    
+    const { data, error } = await supabase
+      .from('blog')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Supabase UPDATE error:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      const error = new Error(`Blog post with id ${id} not found`);
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const updatedPost: BlogPost = {
+      id: data.id,
+      category: data.category,
+      title: data.title,
+      excerpt: data.excerpt,
+      content: data.content,
+      author: data.author,
+      date: data.date,
+      readTime: data.read_time,
+      imageUrl: data.image_url,
+      publishedAt: data.published_at,
+      sortOrder: data.sort_order ?? 0,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    console.log('✅ Blog updated in Supabase:', updatedPost.id);
+    return updatedPost;
+  } catch (error) {
+    console.error('❌ Error updating blog in Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error so the UI can handle it
+    throw error;
+  }
 }
 
 export async function deleteBlogPost(id: number): Promise<boolean> {
@@ -823,126 +1009,147 @@ export async function getInquiries(): Promise<Inquiry[]> {
 }
 
 export async function saveInquiry(inquiry: Omit<Inquiry, "id" | "createdAt" | "status">): Promise<Inquiry> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('inquiries')
-        .insert({
-          name: inquiry.name,
-          email: inquiry.email,
-          company: inquiry.company,
-          phone: inquiry.phone,
-          type: inquiry.type,
-          message: inquiry.message,
-          status: 'pending',
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      const newInquiry: Inquiry = {
-        id: data.id,
-        name: data.name,
-        email: data.email,
-        company: data.company,
-        phone: data.phone,
-        type: data.type,
-        message: data.message,
-        reply: data.reply,
-        repliedAt: data.replied_at,
-        createdAt: data.created_at,
-        status: data.status,
-      };
-      
-      const localInquiries = await getInquiries();
-      localInquiries.push(newInquiry);
-      localStorage.setItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(localInquiries));
-      
-      return newInquiry;
-    } catch (error) {
-      console.error('Error saving inquiry to Supabase:', error);
-    }
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot save inquiry.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  const inquiries = await getInquiries();
-  const newInquiry: Inquiry = {
-    ...inquiry,
-    id: inquiries.length > 0 ? Math.max(...inquiries.map((i) => i.id)) + 1 : 1,
-    createdAt: new Date().toISOString(),
-    status: "pending",
-  };
-  inquiries.push(newInquiry);
-  localStorage.setItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(inquiries));
-  return newInquiry;
+
+  try {
+    // CRITICAL: Ensure input object does NOT contain id
+    if ('id' in inquiry && (inquiry as any).id !== undefined) {
+      const error = new Error('CRITICAL: Input inquiry object contains id field.');
+      console.error('❌', error.message, { inquiryKeys: Object.keys(inquiry) });
+      throw error;
+    }
+
+    // Create INSERT payload with ONLY editable fields
+    // DO NOT include: id, created_at, status (status has DEFAULT 'pending')
+    const insertPayload: Record<string, any> = {};
+    if (inquiry.name !== undefined) insertPayload.name = inquiry.name;
+    if (inquiry.email !== undefined) insertPayload.email = inquiry.email;
+    if (inquiry.company !== undefined) insertPayload.company = inquiry.company;
+    if (inquiry.phone !== undefined) insertPayload.phone = inquiry.phone;
+    if (inquiry.type !== undefined) insertPayload.type = inquiry.type;
+    if (inquiry.message !== undefined) insertPayload.message = inquiry.message;
+    // status has DEFAULT 'pending' in schema, so we can omit it
+
+    // CRITICAL: Verify id is NOT in payload
+    if ('id' in insertPayload || 'created_at' in insertPayload) {
+      const error = new Error('CRITICAL: Prohibited fields detected in insert payload');
+      console.error('❌', error.message, insertPayload);
+      throw error;
+    }
+
+    const { data, error } = await supabase
+      .from('inquiries')
+      .insert(insertPayload)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Supabase INSERT error:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      const error = new Error('No data returned from Supabase after insert');
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const newInquiry: Inquiry = {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      company: data.company,
+      phone: data.phone,
+      type: data.type,
+      message: data.message,
+      reply: data.reply,
+      repliedAt: data.replied_at,
+      createdAt: data.created_at,
+      status: data.status,
+    };
+    
+    console.log('✅ Inquiry saved to Supabase (id generated by DB):', newInquiry.id);
+    return newInquiry;
+  } catch (error) {
+    console.error('❌ Error saving inquiry to Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
+  }
 }
 
 export async function updateInquiry(id: number, updates: Partial<Inquiry>): Promise<Inquiry | null> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const updateData: any = {};
-      if (updates.name !== undefined) updateData.name = updates.name;
-      if (updates.email !== undefined) updateData.email = updates.email;
-      if (updates.company !== undefined) updateData.company = updates.company;
-      if (updates.phone !== undefined) updateData.phone = updates.phone;
-      if (updates.type !== undefined) updateData.type = updates.type;
-      if (updates.message !== undefined) updateData.message = updates.message;
-      if (updates.reply !== undefined) {
-        updateData.reply = updates.reply;
-        updateData.replied_at = new Date().toISOString();
-        updateData.status = 'replied';
-      }
-      
-      const { data, error } = await supabase
-        .from('inquiries')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      if (!data) return null;
-      
-      const updatedInquiry: Inquiry = {
-        id: data.id,
-        name: data.name,
-        email: data.email,
-        company: data.company,
-        phone: data.phone,
-        type: data.type,
-        message: data.message,
-        reply: data.reply,
-        repliedAt: data.replied_at,
-        createdAt: data.created_at,
-        status: data.status,
-      };
-      
-      const localInquiries = await getInquiries();
-      const localIndex = localInquiries.findIndex((inquiry) => inquiry.id === id);
-      if (localIndex !== -1) {
-        localInquiries[localIndex] = updatedInquiry;
-        localStorage.setItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(localInquiries));
-      }
-      
-      return updatedInquiry;
-    } catch (error) {
-      console.error('Error updating inquiry in Supabase:', error);
-    }
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot update inquiry.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  const inquiries = await getInquiries();
-  const index = inquiries.findIndex((inquiry) => inquiry.id === id);
-  if (index === -1) return null;
-  
-  inquiries[index] = {
-    ...inquiries[index],
-    ...updates,
-    id,
-    repliedAt: updates.reply ? new Date().toISOString() : inquiries[index].repliedAt,
-    status: updates.reply ? "replied" : inquiries[index].status,
-  };
-  localStorage.setItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(inquiries));
-  return inquiries[index];
+
+  try {
+    // Create UPDATE payload with ONLY editable fields
+    // DO NOT include: id, created_at (id is used only in .eq())
+    const updateData: Record<string, any> = {};
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.email !== undefined) updateData.email = updates.email;
+    if (updates.company !== undefined) updateData.company = updates.company;
+    if (updates.phone !== undefined) updateData.phone = updates.phone;
+    if (updates.type !== undefined) updateData.type = updates.type;
+    if (updates.message !== undefined) updateData.message = updates.message;
+    if (updates.reply !== undefined) {
+      updateData.reply = updates.reply;
+      updateData.replied_at = new Date().toISOString();
+      updateData.status = 'replied';
+    }
+
+    // CRITICAL: Verify id is NOT in update payload
+    if ('id' in updateData || 'created_at' in updateData) {
+      const error = new Error('CRITICAL: Prohibited fields detected in update payload');
+      console.error('❌', error.message, updateData);
+      throw error;
+    }
+    
+    const { data, error } = await supabase
+      .from('inquiries')
+      .update(updateData)
+      .eq('id', id)  // id used ONLY here, not in payload
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Supabase UPDATE error:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      const error = new Error(`Inquiry with id ${id} not found`);
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const updatedInquiry: Inquiry = {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      company: data.company,
+      phone: data.phone,
+      type: data.type,
+      message: data.message,
+      reply: data.reply,
+      repliedAt: data.replied_at,
+      createdAt: data.created_at,
+      status: data.status,
+    };
+    
+    console.log('✅ Inquiry updated in Supabase:', updatedInquiry.id);
+    return updatedInquiry;
+  } catch (error) {
+    console.error('❌ Error updating inquiry in Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
+  }
 }
 
 export async function deleteInquiry(id: number): Promise<boolean> {
@@ -995,7 +1202,8 @@ export async function getAnnouncements(): Promise<Announcement[]> {
       const { data, error } = await supabase
         .from('announcements')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('sort_order', { ascending: true })
+        .order('published_at', { ascending: false });
       
       if (error) throw error;
       
@@ -1019,111 +1227,157 @@ export async function getAnnouncements(): Promise<Announcement[]> {
 }
 
 export async function saveAnnouncement(announcement: Omit<Announcement, "id" | "createdAt" | "updatedAt">): Promise<Announcement> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('announcements')
-        .insert({
-          title: announcement.title,
-          date: announcement.date,
-          category: announcement.category,
-          content: announcement.content,
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      const newAnnouncement: Announcement = {
-        id: data.id,
-        title: data.title,
-        date: data.date,
-        category: data.category,
-        content: data.content,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
-      
-      const localAnnouncements = await getAnnouncements();
-      localAnnouncements.push(newAnnouncement);
-      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(localAnnouncements));
-      
-      console.log('✅ Announcement saved to Supabase:', newAnnouncement.id);
-      return newAnnouncement;
-    } catch (error) {
-      console.error('❌ Error saving announcement to Supabase:', error);
-      console.error('   Falling back to localStorage');
-    }
-  } else {
-    console.warn('⚠️ Supabase not enabled. Saving announcement to localStorage only.');
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot save announcement.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  const announcements = await getAnnouncements();
-  const newAnnouncement: Announcement = {
-    ...announcement,
-    id: announcements.length > 0 ? Math.max(...announcements.map((a) => a.id)) + 1 : 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  announcements.push(newAnnouncement);
-  localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(announcements));
-  return newAnnouncement;
+
+  try {
+    // CRITICAL: Ensure input object does NOT contain id
+    if ('id' in announcement && (announcement as any).id !== undefined) {
+      const error = new Error('CRITICAL: Input announcement object contains id field.');
+      console.error('❌', error.message, { announcementKeys: Object.keys(announcement) });
+      throw error;
+    }
+
+    // Create INSERT payload with ONLY editable fields
+    // DO NOT include: id, created_at, updated_at
+    const insertPayload: Record<string, any> = {};
+    if (announcement.title !== undefined) insertPayload.title = announcement.title;
+    if (announcement.date !== undefined) insertPayload.date = announcement.date;
+    if (announcement.category !== undefined) insertPayload.category = announcement.category;
+    if (announcement.content !== undefined) insertPayload.content = announcement.content;
+    
+    // Handle published_at: default to NOW() if not provided
+    if (announcement.publishedAt !== undefined && announcement.publishedAt !== null && announcement.publishedAt.trim() !== '') {
+      insertPayload.published_at = announcement.publishedAt;
+    }
+    
+    // Handle sort_order: default to 0 if not provided
+    if (announcement.sortOrder !== undefined && announcement.sortOrder !== null) {
+      insertPayload.sort_order = Number(announcement.sortOrder) || 0;
+    }
+
+    // CRITICAL: Verify id is NOT in payload
+    if ('id' in insertPayload || 'created_at' in insertPayload || 'updated_at' in insertPayload) {
+      const error = new Error('CRITICAL: Prohibited fields detected in insert payload');
+      console.error('❌', error.message, insertPayload);
+      throw error;
+    }
+
+    const { data, error } = await supabase
+      .from('announcements')
+      .insert(insertPayload)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Supabase INSERT error:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      const error = new Error('No data returned from Supabase after insert');
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const newAnnouncement: Announcement = {
+      id: data.id,
+      title: data.title,
+      date: data.date,
+      category: data.category,
+      content: data.content,
+      publishedAt: data.published_at,
+      sortOrder: data.sort_order ?? 0,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    console.log('✅ Announcement saved to Supabase (id generated by DB):', newAnnouncement.id);
+    return newAnnouncement;
+  } catch (error) {
+    console.error('❌ Error saving announcement to Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
+  }
 }
 
 export async function updateAnnouncement(id: number, updates: Partial<Announcement>): Promise<Announcement | null> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const updateData: any = {};
-      if (updates.title !== undefined) updateData.title = updates.title;
-      if (updates.date !== undefined) updateData.date = updates.date;
-      if (updates.category !== undefined) updateData.category = updates.category;
-      if (updates.content !== undefined) updateData.content = updates.content;
-      
-      const { data, error } = await supabase
-        .from('announcements')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      if (!data) return null;
-      
-      const updatedAnnouncement: Announcement = {
-        id: data.id,
-        title: data.title,
-        date: data.date,
-        category: data.category,
-        content: data.content,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
-      
-      const localAnnouncements = await getAnnouncements();
-      const localIndex = localAnnouncements.findIndex((a) => a.id === id);
-      if (localIndex !== -1) {
-        localAnnouncements[localIndex] = updatedAnnouncement;
-        localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(localAnnouncements));
-      }
-      
-      return updatedAnnouncement;
-    } catch (error) {
-      console.error('Error updating announcement in Supabase:', error);
-    }
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot update announcement.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  const announcements = await getAnnouncements();
-  const index = announcements.findIndex((a) => a.id === id);
-  if (index === -1) return null;
-  
-  announcements[index] = {
-    ...announcements[index],
-    ...updates,
-    id,
-    updatedAt: new Date().toISOString(),
-  };
-  localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(announcements));
-  return announcements[index];
+
+  try {
+    // Create UPDATE payload with ONLY editable fields
+    // DO NOT include: id, created_at, updated_at (id is used only in .eq())
+    const updateData: Record<string, any> = {};
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.date !== undefined) updateData.date = updates.date;
+    if (updates.category !== undefined) updateData.category = updates.category;
+    if (updates.content !== undefined) updateData.content = updates.content;
+    
+    // Handle published_at
+    if (updates.publishedAt !== undefined) {
+      if (updates.publishedAt !== null && updates.publishedAt.trim() !== '') {
+        updateData.published_at = updates.publishedAt;
+      } else {
+        updateData.published_at = null;
+      }
+    }
+    
+    // Handle sort_order
+    if (updates.sortOrder !== undefined) {
+      updateData.sort_order = Number(updates.sortOrder) || 0;
+    }
+
+    // CRITICAL: Verify id is NOT in update payload
+    if ('id' in updateData || 'created_at' in updateData || 'updated_at' in updateData) {
+      const error = new Error('CRITICAL: Prohibited fields detected in update payload');
+      console.error('❌', error.message, updateData);
+      throw error;
+    }
+    
+    const { data, error } = await supabase
+      .from('announcements')
+      .update(updateData)
+      .eq('id', id)  // id used ONLY here, not in payload
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Supabase UPDATE error:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      const error = new Error(`Announcement with id ${id} not found`);
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const updatedAnnouncement: Announcement = {
+      id: data.id,
+      title: data.title,
+      date: data.date,
+      category: data.category,
+      content: data.content,
+      publishedAt: data.published_at,
+      sortOrder: data.sort_order ?? 0,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    console.log('✅ Announcement updated in Supabase:', updatedAnnouncement.id);
+    return updatedAnnouncement;
+  } catch (error) {
+    console.error('❌ Error updating announcement in Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
+  }
 }
 
 export async function deleteAnnouncement(id: number): Promise<boolean> {
@@ -1154,166 +1408,283 @@ export async function deleteAnnouncement(id: number): Promise<boolean> {
 
 // Press Release functions
 export async function getPressReleases(): Promise<PressRelease[]> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot fetch press releases.');
+    console.error('❌', error.message);
+    throw error;
+  }
+
+  try {
       const { data, error } = await supabase
         .from('press_releases')
         .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      return (data || []).map((item: any) => ({
-        id: item.id,
-        title: item.title,
-        date: item.date,
-        source: item.source,
-        url: item.url,
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
-      }));
-    } catch (error) {
-      console.error('Error fetching press releases from Supabase:', error);
-      // Supabase 오류 시 localStorage로 fallback
+        .order('sort_order', { ascending: true })
+        .order('published_at', { ascending: false });
+    
+    if (error) {
+      console.error('❌ Supabase SELECT error:', error);
+      throw error;
     }
+    
+    return (data || []).map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      date: item.date,
+      source: item.source,
+      url: item.url,
+      publishedAt: item.published_at,
+      sortOrder: item.sort_order ?? 0,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+    }));
+  } catch (error) {
+    console.error('❌ Error fetching press releases from Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
   }
-  
-  const data = localStorage.getItem(STORAGE_KEYS.PRESS);
-  return data ? JSON.parse(data) : [];
 }
 
 export async function savePressRelease(press: Omit<PressRelease, "id" | "createdAt" | "updatedAt">): Promise<PressRelease> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('press_releases')
-        .insert({
-          title: press.title,
-          date: press.date,
-          source: press.source,
-          url: press.url,
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      const newPress: PressRelease = {
-        id: data.id,
-        title: data.title,
-        date: data.date,
-        source: data.source,
-        url: data.url,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
-      
-      const localPressReleases = await getPressReleases();
-      localPressReleases.push(newPress);
-      localStorage.setItem(STORAGE_KEYS.PRESS, JSON.stringify(localPressReleases));
-      
-      console.log('✅ Press release saved to Supabase:', newPress.id);
-      return newPress;
-    } catch (error) {
-      console.error('❌ Error saving press release to Supabase:', error);
-      console.error('   Falling back to localStorage');
-    }
-  } else {
-    console.warn('⚠️ Supabase not enabled. Saving press release to localStorage only.');
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot save press release.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  const pressReleases = await getPressReleases();
-  const newPress: PressRelease = {
-    ...press,
-    id: pressReleases.length > 0 ? Math.max(...pressReleases.map((p) => p.id)) + 1 : 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  pressReleases.push(newPress);
-  localStorage.setItem(STORAGE_KEYS.PRESS, JSON.stringify(pressReleases));
-  return newPress;
+
+  try {
+    // CRITICAL: Ensure input object does NOT contain id
+    if ('id' in press && (press as any).id !== undefined) {
+      const error = new Error('CRITICAL: Input press object contains id field.');
+      console.error('❌', error.message, { pressKeys: Object.keys(press) });
+      throw error;
+    }
+
+    // Create INSERT payload with ONLY editable fields
+    // DO NOT include: id, created_at, updated_at, content, or any extra fields
+    // ONLY include: title, date, source, url
+    const insertPayload: Record<string, any> = {};
+    
+    // Title is required
+    if (!press.title || press.title.trim() === '') {
+      const error = new Error('Title is required for press release');
+      console.error('❌', error.message);
+      throw error;
+    }
+    insertPayload.title = press.title.trim();
+    
+    // Optional fields: only include if they have non-empty values
+    if (press.date !== undefined && press.date.trim() !== '') {
+      insertPayload.date = press.date.trim();
+    }
+    if (press.source !== undefined && press.source.trim() !== '') {
+      insertPayload.source = press.source.trim();
+    }
+    if (press.url !== undefined && press.url.trim() !== '') {
+      insertPayload.url = press.url.trim();
+    }
+    
+    // Handle published_at: default to NOW() if not provided
+    if (press.publishedAt !== undefined && press.publishedAt !== null && press.publishedAt.trim() !== '') {
+      insertPayload.published_at = press.publishedAt;
+    }
+    
+    // Handle sort_order: default to 0 if not provided
+    if (press.sortOrder !== undefined && press.sortOrder !== null) {
+      insertPayload.sort_order = Number(press.sortOrder) || 0;
+    }
+
+    // CRITICAL: Verify payload contains ONLY allowed fields
+    const allowedFields = ['title', 'date', 'source', 'url', 'published_at', 'sort_order'];
+    const payloadKeys = Object.keys(insertPayload);
+    const invalidFields = payloadKeys.filter(key => !allowedFields.includes(key));
+    
+    if (invalidFields.length > 0) {
+      const error = new Error(`CRITICAL: Invalid fields detected in insert payload: ${invalidFields.join(', ')}`);
+      console.error('❌', error.message, { insertPayload, allowedFields });
+      throw error;
+    }
+
+    // CRITICAL: Verify prohibited fields are NOT in payload
+    if ('id' in insertPayload || 'created_at' in insertPayload || 'updated_at' in insertPayload || 'content' in insertPayload) {
+      const error = new Error('CRITICAL: Prohibited fields detected in insert payload');
+      console.error('❌', error.message, insertPayload);
+      throw error;
+    }
+    
+    console.log('📦 Press release INSERT payload:', {
+      fields: Object.keys(insertPayload),
+      hasTitle: 'title' in insertPayload,
+      hasDate: 'date' in insertPayload,
+      hasSource: 'source' in insertPayload,
+      hasUrl: 'url' in insertPayload,
+    });
+
+    console.log('📤 Inserting press release into Supabase...');
+    const { data, error } = await supabase
+      .from('press_releases')
+      .insert(insertPayload)
+      .select()
+      .single();
+    
+    if (error) {
+      // CRITICAL: Log detailed error information
+      console.error('❌ Supabase INSERT error:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        insertPayload,
+      });
+      
+      // Create user-friendly error message
+      const errorMsg = error.message || 'Failed to save press release to database';
+      const errorDetails = error.details ? `\nDetails: ${error.details}` : '';
+      const errorHint = error.hint ? `\nHint: ${error.hint}` : '';
+      const fullError = new Error(`${errorMsg}${errorDetails}${errorHint}`);
+      (fullError as any).error = error;
+      throw fullError;
+    }
+    
+    if (!data) {
+      const error = new Error('No data returned from Supabase after insert. Press release may not have been saved.');
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const newPress: PressRelease = {
+      id: data.id,
+      title: data.title,
+      date: data.date,
+      source: data.source,
+      url: data.url,
+      publishedAt: data.published_at,
+      sortOrder: data.sort_order ?? 0,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    console.log('✅ Press release saved to Supabase:', {
+      id: newPress.id,
+      title: newPress.title,
+      date: newPress.date,
+      source: newPress.source,
+    });
+    
+    // CRITICAL: Verify the saved data matches what we sent
+    if (newPress.title !== insertPayload.title) {
+      console.warn('⚠️ Title mismatch after save:', { sent: insertPayload.title, received: newPress.title });
+    }
+    
+    return newPress;
+  } catch (error) {
+    console.error('❌ Error saving press release to Supabase:', error);
+    // CRITICAL: DO NOT fall back to localStorage - throw the error
+    // This ensures the operation fails explicitly and user sees the error
+    throw error;
+  }
 }
 
 export async function updatePressRelease(id: number, updates: Partial<PressRelease>): Promise<PressRelease | null> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const updateData: any = {};
-      if (updates.title !== undefined) updateData.title = updates.title;
-      if (updates.date !== undefined) updateData.date = updates.date;
-      if (updates.source !== undefined) updateData.source = updates.source;
-      if (updates.url !== undefined) updateData.url = updates.url;
-      
-      const { data, error } = await supabase
-        .from('press_releases')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      if (!data) return null;
-      
-      const updatedPress: PressRelease = {
-        id: data.id,
-        title: data.title,
-        date: data.date,
-        source: data.source,
-        url: data.url,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
-      
-      const localPressReleases = await getPressReleases();
-      const localIndex = localPressReleases.findIndex((p) => p.id === id);
-      if (localIndex !== -1) {
-        localPressReleases[localIndex] = updatedPress;
-        localStorage.setItem(STORAGE_KEYS.PRESS, JSON.stringify(localPressReleases));
-      }
-      
-      return updatedPress;
-    } catch (error) {
-      console.error('Error updating press release in Supabase:', error);
-    }
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot update press release.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  const pressReleases = await getPressReleases();
-  const index = pressReleases.findIndex((p) => p.id === id);
-  if (index === -1) return null;
-  
-  pressReleases[index] = {
-    ...pressReleases[index],
-    ...updates,
-    id,
-    updatedAt: new Date().toISOString(),
-  };
-  localStorage.setItem(STORAGE_KEYS.PRESS, JSON.stringify(pressReleases));
-  return pressReleases[index];
+
+  try {
+    // Create UPDATE payload with ONLY editable fields
+    // DO NOT include: id, created_at, updated_at (id is used only in .eq())
+    const updateData: Record<string, any> = {};
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.date !== undefined) updateData.date = updates.date;
+    if (updates.source !== undefined) updateData.source = updates.source;
+    if (updates.url !== undefined) updateData.url = updates.url;
+    
+    // Handle published_at
+    if (updates.publishedAt !== undefined) {
+      if (updates.publishedAt !== null && updates.publishedAt.trim() !== '') {
+        updateData.published_at = updates.publishedAt;
+      } else {
+        updateData.published_at = null;
+      }
+    }
+    
+    // Handle sort_order
+    if (updates.sortOrder !== undefined) {
+      updateData.sort_order = Number(updates.sortOrder) || 0;
+    }
+
+    // CRITICAL: Verify id is NOT in update payload
+    if ('id' in updateData || 'created_at' in updateData || 'updated_at' in updateData) {
+      const error = new Error('CRITICAL: Prohibited fields detected in update payload');
+      console.error('❌', error.message, updateData);
+      throw error;
+    }
+    
+    const { data, error } = await supabase
+      .from('press_releases')
+      .update(updateData)
+      .eq('id', id)  // id used ONLY here, not in payload
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Supabase UPDATE error:', error);
+      throw error;
+    }
+    
+    if (!data) {
+      const error = new Error(`Press release with id ${id} not found`);
+      console.error('❌', error.message);
+      throw error;
+    }
+    
+    const updatedPress: PressRelease = {
+      id: data.id,
+      title: data.title,
+      date: data.date,
+      source: data.source,
+      url: data.url,
+      publishedAt: data.published_at,
+      sortOrder: data.sort_order ?? 0,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+    
+    console.log('✅ Press release updated in Supabase:', updatedPress.id);
+    return updatedPress;
+  } catch (error) {
+    console.error('❌ Error updating press release in Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
+  }
 }
 
 export async function deletePressRelease(id: number): Promise<boolean> {
-  if (isSupabaseEnabled() && supabase) {
-    try {
-      const { error } = await supabase
-        .from('press_releases')
-        .delete()
-        .eq('id', id);
-      
-      if (error) throw error;
-      
-      const localPressReleases = await getPressReleases();
-      const filtered = localPressReleases.filter((p) => p.id !== id);
-      localStorage.setItem(STORAGE_KEYS.PRESS, JSON.stringify(filtered));
-      
-      return true;
-    } catch (error) {
-      console.error('Error deleting press release from Supabase:', error);
-    }
+  if (!isSupabaseEnabled() || !supabase) {
+    const error = new Error('Supabase is not enabled. Cannot delete press release.');
+    console.error('❌', error.message);
+    throw error;
   }
-  
-  const pressReleases = await getPressReleases();
-  const filtered = pressReleases.filter((p) => p.id !== id);
-  localStorage.setItem(STORAGE_KEYS.PRESS, JSON.stringify(filtered));
-  return filtered.length < pressReleases.length;
+
+  try {
+    const { error } = await supabase
+      .from('press_releases')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error('❌ Supabase DELETE error:', error);
+      throw error;
+    }
+    
+    console.log('✅ Press release deleted from Supabase:', id);
+    return true;
+  } catch (error) {
+    console.error('❌ Error deleting press release from Supabase:', error);
+    // DO NOT fall back to localStorage - throw the error
+    throw error;
+  }
 }
 
 // Newsletter Subscriber functions
@@ -1430,7 +1801,8 @@ export function resetToDefaultData() {
   localStorage.removeItem(STORAGE_KEYS.PORTFOLIO);
   localStorage.removeItem(STORAGE_KEYS.BLOG);
   localStorage.removeItem(STORAGE_KEYS.ANNOUNCEMENTS);
-  localStorage.removeItem(STORAGE_KEYS.PRESS);
+  // NOTE: Press releases are stored ONLY in Supabase DB, not localStorage
+  // localStorage.removeItem(STORAGE_KEYS.PRESS); // REMOVED - press releases use Supabase only
   
   // Re-initialize with default data
   initializeStorage();

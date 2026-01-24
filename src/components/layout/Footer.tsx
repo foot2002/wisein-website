@@ -37,7 +37,7 @@ export function Footer() {
             </Link>
             <p className="text-muted-foreground text-sm leading-relaxed mb-6 max-w-sm">
               데이터와 AI로 여는 비즈니스의 세계.<br />
-              공공기관 및 기업을 위한 신뢰할 수 있는 데이터 & AI 파트너입니다.
+              <span className="whitespace-nowrap">공공기관 및 기업을 위한 신뢰할 수 있는 데이터 & AI 파트너입니다.</span>
             </p>
             <div className="space-y-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-3">

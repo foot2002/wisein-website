@@ -26,35 +26,84 @@ export async function uploadImageToSupabase(
     const timestamp = Date.now();
     const fileExt = file.name.split('.').pop();
     const fileName = `${timestamp}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const filePath = folderName ? `${folderName}/${fileName}` : fileName;
+    
+    // 업로드 경로 생성 (folderName이 있으면 'folderName/fileName', 없으면 'fileName')
+    const uploadPath = folderName ? `${folderName}/${fileName}` : fileName;
+
+    console.log('📤 Uploading image to Supabase:', {
+      bucket: bucketName,
+      uploadPath,
+      fileName,
+      folderName,
+    });
 
     // 파일 업로드
-    const { data, error } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from(bucketName)
-      .upload(filePath, file, {
+      .upload(uploadPath, file, {
         cacheControl: '3600',
         upsert: false,
       });
 
-    if (error) {
+    if (uploadError) {
       // 버킷이 없으면 생성 시도
-      if (error.message.includes('Bucket not found')) {
+      if (uploadError.message.includes('Bucket not found')) {
         console.warn(`Bucket '${bucketName}' not found. Creating bucket...`);
         // 버킷 생성은 수동으로 해야 할 수 있음 (권한 문제)
         console.error('Please create the bucket manually in Supabase Dashboard:', bucketName);
         return null;
       }
-      throw error;
+      console.error('❌ Upload error:', uploadError);
+      throw uploadError;
     }
 
-    // 공개 URL 가져오기
+    if (!uploadData) {
+      console.error('❌ No upload data returned');
+      return null;
+    }
+
+    // CRITICAL: Use the exact path returned from upload (data.path)
+    // This ensures the upload path and public URL path are identical
+    const actualPath = uploadData.path;
+    
+    console.log('✅ Upload successful:', {
+      bucket: bucketName,
+      actualPath,
+      uploadPath,
+      pathsMatch: actualPath === uploadPath,
+    });
+
+    // CRITICAL: Generate public URL using the EXACT path from upload
+    // DO NOT manually construct URLs - always use getPublicUrl()
     const { data: urlData } = supabase.storage
       .from(bucketName)
-      .getPublicUrl(filePath);
+      .getPublicUrl(actualPath);
 
-    return urlData.publicUrl;
+    if (!urlData || !urlData.publicUrl) {
+      console.error('❌ Failed to get public URL');
+      return null;
+    }
+
+    const publicUrl = urlData.publicUrl;
+
+    console.log('🔗 Public URL generated:', {
+      bucket: bucketName,
+      path: actualPath,
+      publicUrl,
+      urlFormat: publicUrl.includes('/storage/v1/object/public/'),
+    });
+
+    // Verify the URL can be accessed (optional check)
+    // The URL should be: https://[project-ref].supabase.co/storage/v1/object/public/[bucket]/[path]
+    if (!publicUrl.includes('/storage/v1/object/public/')) {
+      console.warn('⚠️ Public URL format may be incorrect:', publicUrl);
+    }
+
+    // CRITICAL: Return ONLY the publicUrl value
+    // This is what will be saved to image_url in the database
+    return publicUrl;
   } catch (error) {
-    console.error('Error uploading image to Supabase:', error);
+    console.error('❌ Error uploading image to Supabase:', error);
     return null;
   }
 }

@@ -13,11 +13,8 @@ export default function Press() {
         setIsLoading(true);
         const data = await getPressReleases();
         console.log('보도자료 데이터:', data); // 디버깅용
-        // 날짜순으로 정렬 (최신순)
-        const sorted = Array.isArray(data) ? [...data].sort((a, b) => 
-          new Date(b.date).getTime() - new Date(a.date).getTime()
-        ) : [];
-        setPressReleases(sorted);
+        // Data is already ordered by DB: sort_order ASC, published_at DESC
+        setPressReleases(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('보도자료 로딩 오류:', error);
         setPressReleases([]);

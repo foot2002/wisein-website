@@ -27,13 +27,10 @@ export default function Portfolio() {
 
   useEffect(() => {
     // 관리자 페이지에서 등록한 포트폴리오 데이터 로드
+    // Data is already ordered by DB: sort_order ASC, published_at DESC
     const loadData = async () => {
       const portfolioData = await getPortfolioItems();
-      // 최신순으로 정렬
-      const sorted = [...portfolioData].sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-      setProjects(sorted);
+      setProjects(portfolioData);
     };
     loadData();
   }, []);

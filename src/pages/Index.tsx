@@ -20,7 +20,7 @@ import { ScrollingClients } from "@/components/ScrollingClients";
 
 // Stats data
 const stats = [
-  { label: "업력", value: 23, suffix: "년", prefix: "'" },
+  { label: "업력", value: 23, suffix: "년" },
   { label: "프로젝트 수행", value: 2000, suffix: "+" },
   { label: "공공+기업", value: 1400, suffix: "" },
   { label: "회원수", value: 30000, suffix: "" },
@@ -37,19 +37,19 @@ const services = [
   {
     icon: BarChart3,
     title: "Research & Consulting",
-    description: "빅데이터 분석, 정책 및 통계 분석으로 전략적 인사이트를 제공합니다.",
+    description: "빅데이터 분석과 정책·통계 분석을 통해 의사결정에 필요한 실질적인 전략 인사이트를 제공합니다.",
     href: "/services/research-consulting",
   },
   {
     icon: GraduationCap,
     title: "AI & Data\nEducation",
-    description: "국비지원 교육 프로그램으로 데이터 전문 인재를 양성합니다.",
+    description: "국비지원 교육 프로그램을 통해 실무에 바로 적용 가능한 데이터·AI 전문 인재를 양성합니다.",
     href: "/services/education",
   },
   {
     icon: LineChart,
     title: "B2C Financial\nPlatform",
-    description: "RichWay 금융 플랫폼으로 개인 금융 관리의 새로운 경험을 제공합니다.",
+    description: "RichWay 금융 플랫폼을 통해 누구나 쉽게 활용할 수 있는 개인 금융 관리 경험을 제공합니다.",
     href: "/services/platform",
   },
 ];
@@ -132,10 +132,11 @@ export default function Index() {
           <div className="text-center mb-16">
             <p className="text-accent font-medium mb-3">OUR SERVICES</p>
             <h2 className="text-display-sm font-bold text-foreground mb-4">
-              비즈니스 성장을 위한 토탈 솔루션
+              비즈니스 성장을 설계하는 데이터 & AI 솔루션
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              데이터 수집부터 AI 적용까지, 비즈니스의 모든 단계에서 최적의 솔루션을 제공합니다.
+              공공기관과 기업의 목적에 맞춰 데이터 분석, AI 활용, 교육 및<br />
+              B2C 플랫폼까지 검증된 맞춤형 솔루션을 제공합니다.
             </p>
           </div>
 
@@ -189,10 +190,10 @@ export default function Index() {
               
               <div className="space-y-4">
                 {[
-                  "대규모 프로젝트 2,000+ 경험",
-                  "1,400+ 공공/기관 도입",
-                  "혁신제품 + CSAP 인증",
-                  "국내 유일 조사분석 AI 공공 SaaS",
+                  "2,000+ 대규모 프로젝트 수행",
+                  "1,400+ 공공기관·기업 도입 사례",
+                  "혁신제품 지정 + CSAP 클라우드 보안 인증",
+                  "국내 유일 조사·분석 AI 공공 SaaS",
                 ].map((item) => (
                   <div key={item} className="flex items-center gap-3">
                     <CheckCircle2 className="h-5 w-5 text-accent flex-shrink-0" />

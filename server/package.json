@@ -1,5 +1,4 @@
 {
-  "type": "module",
   "name": "email-server",
   "version": "1.0.0",
   "description": "Email server for WiseIN Company",

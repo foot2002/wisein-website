@@ -99,39 +99,43 @@ export default function AdminInquiries() {
 
     try {
       // 이메일 전송
-      const result = await sendInquiryReplyEmail({
-        to: selectedInquiry.email,
-        name: selectedInquiry.name,
-        inquiryMessage: selectedInquiry.message,
-        replyMessage: replyText.trim(),
-      });
+      let emailResult = { success: false, error: null as string | null };
+      try {
+        emailResult = await sendInquiryReplyEmail({
+          to: selectedInquiry.email,
+          name: selectedInquiry.name,
+          inquiryMessage: selectedInquiry.message,
+          replyMessage: replyText.trim(),
+        });
+      } catch (emailError: any) {
+        console.error("Error sending email:", emailError);
+        emailResult.error = emailError?.message || '이메일 전송 중 오류가 발생했습니다.';
+      }
 
       // 답변 저장 (이메일 전송 성공 여부와 관계없이)
-      await updateInquiry(selectedInquiry.id, {
-        reply: replyText.trim(),
-        status: "replied",
-      });
+      try {
+        await updateInquiry(selectedInquiry.id, {
+          reply: replyText.trim(),
+        });
 
-      if (result.success) {
-        alert("답변이 저장되었고 이메일이 전송되었습니다.");
-      } else {
-        alert(`이메일 전송에 실패했습니다.\n\n${result.error || '알 수 없는 오류'}\n\n답변은 저장되었습니다.`);
+        if (emailResult.success) {
+          alert("답변이 저장되었고 이메일이 전송되었습니다.");
+        } else {
+          alert(`이메일 전송에 실패했습니다.\n\n${emailResult.error || '알 수 없는 오류'}\n\n답변은 저장되었습니다.`);
+        }
+        
+        setSelectedInquiry(null);
+        setReplyText("");
+        loadInquiries(); // Re-fetch from Supabase
+      } catch (dbError: any) {
+        console.error("Failed to save inquiry reply:", dbError);
+        const errorMessage = dbError?.message || dbError?.error?.message || '답변 저장 중 오류가 발생했습니다.';
+        alert(`오류: ${errorMessage}\n\nSupabase DB에 저장되지 않았습니다.`);
+        // Do NOT clear the form on error - let user retry
       }
-      
-      setSelectedInquiry(null);
-      setReplyText("");
-      loadInquiries();
     } catch (error) {
-      console.error("Error sending email:", error);
-      alert("이메일 전송 중 오류가 발생했습니다. 답변은 저장되었습니다.");
-      // 답변은 저장
-      await updateInquiry(selectedInquiry.id, {
-        reply: replyText.trim(),
-        status: "replied",
-      });
-      setSelectedInquiry(null);
-      setReplyText("");
-      loadInquiries();
+      console.error("Unexpected error:", error);
+      alert("예상치 못한 오류가 발생했습니다.");
     } finally {
       setSendingEmail(false);
     }

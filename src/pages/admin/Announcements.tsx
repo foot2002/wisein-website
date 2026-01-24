@@ -97,22 +97,53 @@ export default function AdminAnnouncements() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    const data = {
+    // CRITICAL: Ensure data object does NOT contain id
+    const data: Record<string, any> = {
       title: formData.get("title") as string,
       date: formData.get("date") as string,
       category: formData.get("category") as string,
       content: formData.get("content") as string,
     };
-
-    if (editingAnnouncement) {
-      await updateAnnouncement(editingAnnouncement.id, data);
-    } else {
-      await saveAnnouncement(data);
+    
+    // Handle sort_order
+    const sortOrderValue = formData.get("sortOrder");
+    if (sortOrderValue !== null && sortOrderValue !== '') {
+      const sortOrder = Number(sortOrderValue);
+      if (!isNaN(sortOrder)) {
+        data.sortOrder = sortOrder;
+      }
+    }
+    
+    // Handle published_at
+    const publishedAtValue = formData.get("publishedAt");
+    if (publishedAtValue !== null && publishedAtValue !== '') {
+      // Convert datetime-local to ISO string
+      data.publishedAt = new Date(publishedAtValue).toISOString();
     }
 
-    setShowForm(false);
-    setEditingAnnouncement(null);
-    loadAnnouncements();
+    // Explicitly remove id if it somehow exists
+    delete (data as any).id;
+    delete (data as any).createdAt;
+    delete (data as any).updatedAt;
+
+    try {
+      if (editingAnnouncement) {
+        await updateAnnouncement(editingAnnouncement.id, data);
+        alert('공지사항이 성공적으로 수정되었습니다.');
+      } else {
+        await saveAnnouncement(data);
+        alert('공지사항이 성공적으로 등록되었습니다.');
+      }
+
+      setShowForm(false);
+      setEditingAnnouncement(null);
+      loadAnnouncements(); // Re-fetch from Supabase
+    } catch (error: any) {
+      console.error('Failed to save announcement:', error);
+      const errorMessage = error?.message || error?.error?.message || '공지사항 저장 중 오류가 발생했습니다.';
+      alert(`오류: ${errorMessage}\n\nSupabase DB에 저장되지 않았습니다.`);
+      // Do NOT close the form on error - let user retry
+    }
   };
 
   const categories = ["서비스", "교육", "시스템", "공지", "인증", "이벤트"];
@@ -247,6 +278,37 @@ export default function AdminAnnouncements() {
                     rows={6}
                     className="w-full px-4 py-2 rounded-lg border border-input bg-background text-foreground resize-none"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      정렬 순서 (낮을수록 먼저 표시)
+                    </label>
+                    <Input
+                      name="sortOrder"
+                      type="number"
+                      defaultValue={editingAnnouncement?.sortOrder ?? 0}
+                      placeholder="0"
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      기본값: 0 (자동 정렬, 최신순)
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      발행일시
+                    </label>
+                    <Input
+                      name="publishedAt"
+                      type="datetime-local"
+                      defaultValue={editingAnnouncement?.publishedAt ? new Date(editingAnnouncement.publishedAt).toISOString().slice(0, 16) : ""}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      비워두면 현재 시간으로 설정됩니다
+                    </p>
+                  </div>
                 </div>
                 <div className="flex gap-4">
                   <Button type="submit" className="flex-1">

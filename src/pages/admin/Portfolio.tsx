@@ -35,6 +35,7 @@ export default function AdminPortfolio() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [editingItem, setEditingItem] = useState<PortfolioItem | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
 
   useEffect(() => {
     loadItems();
@@ -105,32 +106,117 @@ export default function AdminPortfolio() {
 
   const handleEdit = (item: PortfolioItem) => {
     setEditingItem(item);
+    setUploadedImageUrl(item.imageUrl || "");
     setShowForm(true);
   };
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
     
-    const data = {
+    // Prevent submission if image is currently uploading
+    if (uploadingImage) {
+      alert('이미지 업로드가 진행 중입니다. 완료될 때까지 기다려주세요.');
+      return;
+    }
+
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    
+    // STEP 1: Check if there's a file selected but not yet uploaded
+    const fileInput = form.querySelector('input[type="file"]') as HTMLInputElement;
+    let finalImageUrl = uploadedImageUrl || (formData.get("imageUrl") as string)?.trim() || editingItem?.imageUrl || "";
+    
+    // If file is selected but not uploaded yet, upload it FIRST
+    if (fileInput?.files?.[0] && !finalImageUrl) {
+      const file = fileInput.files[0];
+      
+      // 파일 크기 제한 (10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        alert('이미지 크기는 10MB 이하여야 합니다.');
+        return;
+      }
+
+      setUploadingImage(true);
+      try {
+        const { uploadPortfolioImage } = await import('@/lib/supabaseStorage');
+        const uploadedUrl = await uploadPortfolioImage(file);
+        
+        if (uploadedUrl) {
+          finalImageUrl = uploadedUrl;
+          setUploadedImageUrl(uploadedUrl);
+          // Update the input field
+          const imageUrlInput = form.querySelector('input[name="imageUrl"]') as HTMLInputElement;
+          if (imageUrlInput) {
+            imageUrlInput.value = uploadedUrl;
+          }
+          console.log('✅ Image uploaded before form submission:', uploadedUrl);
+        } else {
+          const errorMessage = '이미지 업로드에 실패했습니다. Supabase Storage에 연결할 수 없습니다.';
+          console.error('❌', errorMessage);
+          alert(`오류: ${errorMessage}\n\n포트폴리오 항목은 저장되지 않았습니다.`);
+          setUploadingImage(false);
+          return;
+        }
+      } catch (error: any) {
+        console.error('❌ Image upload error during form submission:', error);
+        const errorMessage = error?.message || '이미지 업로드 중 오류가 발생했습니다.';
+        alert(`오류: ${errorMessage}\n\n포트폴리오 항목은 저장되지 않았습니다.`);
+        setUploadingImage(false);
+        return;
+      } finally {
+        setUploadingImage(false);
+      }
+    }
+    
+    // STEP 2: Build data object with image URL
+    // CRITICAL: Ensure data object does NOT contain id
+    const data: Record<string, any> = {
       category: formData.get("category") as string,
       client: formData.get("client") as string,
       title: formData.get("title") as string,
       description: formData.get("description") as string,
       year: formData.get("year") as string,
       tags: (formData.get("tags") as string).split(",").map((t) => t.trim()).filter(Boolean),
-      imageUrl: formData.get("imageUrl") as string || undefined,
     };
 
-    if (editingItem) {
-      await updatePortfolioItem(editingItem.id, data);
+    // CRITICAL: Include imageUrl in payload if available
+    if (finalImageUrl && finalImageUrl.length > 0) {
+      data.imageUrl = finalImageUrl.trim();
+      console.log('📸 Image URL included in save payload:', finalImageUrl.substring(0, 50) + '...');
     } else {
-      await savePortfolioItem(data);
+      console.warn('⚠️ No image URL - image_url will be NULL in DB');
     }
 
-    setShowForm(false);
-    setEditingItem(null);
-    loadItems();
+    // Explicitly remove id if it somehow exists
+    delete (data as any).id;
+    delete (data as any).createdAt;
+    delete (data as any).updatedAt;
+    
+    console.log('📤 Portfolio data to save:', { 
+      ...data, 
+      imageUrl: data.imageUrl ? 'present (' + data.imageUrl.substring(0, 50) + '...)' : 'missing' 
+    });
+
+    // STEP 3: Save to database
+    try {
+      if (editingItem) {
+        await updatePortfolioItem(editingItem.id, data);
+        alert('포트폴리오 항목이 성공적으로 수정되었습니다.');
+      } else {
+        await savePortfolioItem(data);
+        alert('포트폴리오 항목이 성공적으로 등록되었습니다.');
+      }
+
+      setShowForm(false);
+      setEditingItem(null);
+      setUploadedImageUrl(""); // Reset uploaded image URL
+      loadItems(); // Re-fetch from Supabase
+    } catch (error: any) {
+      console.error('❌ Failed to save portfolio item:', error);
+      const errorMessage = error?.message || error?.error?.message || '포트폴리오 항목 저장 중 오류가 발생했습니다.';
+      alert(`오류: ${errorMessage}\n\nSupabase DB에 저장되지 않았습니다.`);
+      // Do NOT close the form on error - let user retry
+    }
   };
 
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -151,36 +237,25 @@ export default function AdminPortfolio() {
       const imageUrl = await uploadPortfolioImage(file);
       
       if (imageUrl) {
+        // Update both state and form input
+        setUploadedImageUrl(imageUrl);
         const imageUrlInput = form.querySelector('input[name="imageUrl"]') as HTMLInputElement;
         if (imageUrlInput) {
           imageUrlInput.value = imageUrl;
         }
+        console.log('✅ Image uploaded successfully, URL set:', imageUrl);
       } else {
-        // Supabase 업로드 실패 시 Base64로 폴백
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const base64Url = event.target?.result as string;
-          const imageUrlInput = form.querySelector('input[name="imageUrl"]') as HTMLInputElement;
-          if (imageUrlInput) {
-            imageUrlInput.value = base64Url;
-          }
-        };
-        reader.readAsDataURL(file);
-        console.warn('Supabase Storage 업로드 실패. Base64로 저장합니다.');
+        // Supabase 업로드 실패 - 에러 표시
+        setUploadedImageUrl("");
+        const errorMessage = '이미지 업로드에 실패했습니다. Supabase Storage에 연결할 수 없습니다.';
+        console.error('❌', errorMessage);
+        alert(`오류: ${errorMessage}\n\n이미지를 다시 선택해주세요.`);
       }
-    } catch (error) {
-      console.error('Image upload error:', error);
-      alert('이미지 업로드 중 오류가 발생했습니다. Base64로 저장합니다.');
-      // Base64로 폴백
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64Url = event.target?.result as string;
-        const imageUrlInput = form.querySelector('input[name="imageUrl"]') as HTMLInputElement;
-        if (imageUrlInput) {
-          imageUrlInput.value = base64Url;
-        }
-      };
-      reader.readAsDataURL(file);
+    } catch (error: any) {
+      console.error('❌ Image upload error:', error);
+      setUploadedImageUrl("");
+      const errorMessage = error?.message || '이미지 업로드 중 오류가 발생했습니다.';
+      alert(`오류: ${errorMessage}\n\nSupabase Storage에 저장되지 않았습니다.`);
     } finally {
       setUploadingImage(false);
     }
@@ -194,7 +269,7 @@ export default function AdminPortfolio() {
             <h1 className="text-3xl font-bold text-foreground mb-2">포트폴리오 관리</h1>
             <p className="text-muted-foreground">프로젝트 사례를 등록, 수정, 삭제할 수 있습니다.</p>
           </div>
-          <Button onClick={() => { setEditingItem(null); setShowForm(true); }}>
+          <Button onClick={() => { setEditingItem(null); setUploadedImageUrl(""); setShowForm(true); }}>
             <Plus className="h-4 w-4 mr-2" />
             새 항목 등록
           </Button>
@@ -261,7 +336,7 @@ export default function AdminPortfolio() {
               <h2 className="text-2xl font-bold text-foreground mb-6">
                 {editingItem ? "포트폴리오 수정" : "새 포트폴리오 등록"}
               </h2>
-              <form onSubmit={handleFormSubmit} id="portfolio-form">
+              <form onSubmit={handleFormSubmit} id="portfolio-form" name="portfolio-form">
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
@@ -344,7 +419,8 @@ export default function AdminPortfolio() {
                     <Input
                       name="imageUrl"
                       type="url"
-                      defaultValue={editingItem?.imageUrl || ""}
+                      value={uploadedImageUrl || editingItem?.imageUrl || ""}
+                      onChange={(e) => setUploadedImageUrl(e.target.value)}
                       placeholder="https://example.com/image.jpg"
                     />
                     <input
@@ -361,10 +437,41 @@ export default function AdminPortfolio() {
                       이미지를 선택하면 Supabase Storage에 업로드됩니다. (최대 10MB)
                     </p>
                   </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        정렬 순서 (낮을수록 먼저 표시)
+                      </label>
+                      <Input
+                        name="sortOrder"
+                        type="number"
+                        defaultValue={editingItem?.sortOrder ?? 0}
+                        placeholder="0"
+                        className="w-full"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        기본값: 0 (자동 정렬, 최신순)
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        발행일시
+                      </label>
+                      <Input
+                        name="publishedAt"
+                        type="datetime-local"
+                        defaultValue={editingItem?.publishedAt ? new Date(editingItem.publishedAt).toISOString().slice(0, 16) : ""}
+                        className="w-full"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        비워두면 현재 시간으로 설정됩니다
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex gap-4 mt-6">
-                  <Button type="submit" className="flex-1">
-                    {editingItem ? "수정" : "등록"}
+                  <Button type="submit" className="flex-1" disabled={uploadingImage}>
+                    {uploadingImage ? "이미지 업로드 중..." : (editingItem ? "수정" : "등록")}
                   </Button>
                   <Button
                     type="button"
@@ -372,6 +479,7 @@ export default function AdminPortfolio() {
                     onClick={() => {
                       setShowForm(false);
                       setEditingItem(null);
+                      setUploadedImageUrl("");
                     }}
                   >
                     취소

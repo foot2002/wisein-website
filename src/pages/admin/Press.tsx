@@ -97,22 +97,76 @@ export default function AdminPress() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    const data = {
+    // CRITICAL: Ensure data object does NOT contain id
+    // Only include fields that have values (empty strings are treated as undefined)
+    const data: Record<string, any> = {
       title: formData.get("title") as string,
-      date: formData.get("date") as string,
-      source: formData.get("source") as string,
-      url: formData.get("url") as string,
     };
 
-    if (editingPress) {
-      await updatePressRelease(editingPress.id, data);
-    } else {
-      await savePressRelease(data);
+    // Optional fields: only include if they have values
+    const date = (formData.get("date") as string)?.trim();
+    const source = (formData.get("source") as string)?.trim();
+    const url = (formData.get("url") as string)?.trim();
+    
+    if (date) data.date = date;
+    if (source) data.source = source;
+    if (url) data.url = url;
+    
+    // Handle sort_order
+    const sortOrderValue = formData.get("sortOrder");
+    if (sortOrderValue !== null && sortOrderValue !== '') {
+      const sortOrder = Number(sortOrderValue);
+      if (!isNaN(sortOrder)) {
+        data.sortOrder = sortOrder;
+      }
+    }
+    
+    // Handle published_at
+    const publishedAtValue = formData.get("publishedAt");
+    if (publishedAtValue !== null && publishedAtValue !== '') {
+      // Convert datetime-local to ISO string
+      data.publishedAt = new Date(publishedAtValue).toISOString();
     }
 
-    setShowForm(false);
-    setEditingPress(null);
-    loadPressReleases();
+    // Explicitly remove id if it somehow exists
+    delete (data as any).id;
+    delete (data as any).createdAt;
+    delete (data as any).updatedAt;
+
+    try {
+      if (editingPress) {
+        await updatePressRelease(editingPress.id, data);
+        console.log('✅ Press release updated successfully');
+        alert('보도자료가 성공적으로 수정되었습니다.');
+      } else {
+        const savedPress = await savePressRelease(data);
+        console.log('✅ Press release saved successfully:', savedPress.id);
+        alert('보도자료가 성공적으로 등록되었습니다.');
+      }
+
+      // CRITICAL: Close form and reset state
+      setShowForm(false);
+      setEditingPress(null);
+      
+      // CRITICAL: Re-fetch from Supabase to sync state
+      console.log('🔄 Re-fetching press releases from Supabase...');
+      await loadPressReleases();
+      console.log('✅ Press releases re-fetched from Supabase');
+    } catch (error: any) {
+      // CRITICAL: Show explicit error and abort save
+      console.error('❌ Failed to save press release:', error);
+      const errorMessage = error?.message || error?.error?.message || '보도자료 저장 중 오류가 발생했습니다.';
+      const detailedError = error?.error?.details || error?.details || '';
+      const fullErrorMessage = detailedError 
+        ? `오류: ${errorMessage}\n\n상세: ${detailedError}\n\nSupabase DB에 저장되지 않았습니다.`
+        : `오류: ${errorMessage}\n\nSupabase DB에 저장되지 않았습니다.`;
+      
+      alert(fullErrorMessage);
+      
+      // CRITICAL: Do NOT close the form on error - let user retry
+      // Do NOT save to localStorage - abort operation
+      return;
+    }
   };
 
   const sources = Array.from(new Set(pressReleases.map((p) => p.source)));
@@ -213,36 +267,64 @@ export default function AdminPress() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">날짜 *</label>
+                    <label className="block text-sm font-medium text-foreground mb-2">날짜</label>
                     <Input
                       name="date"
                       type="date"
                       defaultValue={editingPress?.date}
-                      required
                       className="w-full"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">출처 *</label>
+                    <label className="block text-sm font-medium text-foreground mb-2">출처</label>
                     <Input
                       name="source"
                       defaultValue={editingPress?.source}
-                      required
                       className="w-full"
                       placeholder="예: 매일경제"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">URL *</label>
+                  <label className="block text-sm font-medium text-foreground mb-2">URL</label>
                   <Input
                     name="url"
                     type="url"
                     defaultValue={editingPress?.url}
-                    required
                     className="w-full"
                     placeholder="https://..."
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      정렬 순서 (낮을수록 먼저 표시)
+                    </label>
+                    <Input
+                      name="sortOrder"
+                      type="number"
+                      defaultValue={editingPress?.sortOrder ?? 0}
+                      placeholder="0"
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      기본값: 0 (자동 정렬, 최신순)
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      발행일시
+                    </label>
+                    <Input
+                      name="publishedAt"
+                      type="datetime-local"
+                      defaultValue={editingPress?.publishedAt ? new Date(editingPress.publishedAt).toISOString().slice(0, 16) : ""}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      비워두면 현재 시간으로 설정됩니다
+                    </p>
+                  </div>
                 </div>
                 <div className="flex gap-4">
                   <Button type="submit" className="flex-1">
