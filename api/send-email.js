@@ -24,6 +24,45 @@ module.exports = async (req, res) => {
   }
 
   try {
+    // ============================================
+    // STEP 1: Environment variable validation (CRITICAL)
+    // ============================================
+    console.log('Validating environment variables...');
+    console.log('SMTP_HOST:', process.env.SMTP_HOST ? 'SET' : 'MISSING');
+    console.log('SMTP_PORT:', process.env.SMTP_PORT || '587 (default)');
+    console.log('SMTP_USER:', process.env.SMTP_USER ? 'SET' : 'MISSING');
+    console.log('SMTP_PASS:', process.env.SMTP_PASS ? 'SET' : 'MISSING');
+    console.log('SMTP_FROM:', process.env.SMTP_FROM || 'NOT SET');
+
+    if (!process.env.SMTP_HOST) {
+      console.error('CRITICAL: SMTP_HOST is missing');
+      return res.status(500).json({ 
+        error: 'SMTP_HOST is missing',
+        message: 'SMTP_HOST environment variable is required'
+      });
+    }
+
+    if (!process.env.SMTP_USER) {
+      console.error('CRITICAL: SMTP_USER is missing');
+      return res.status(500).json({ 
+        error: 'SMTP_USER is missing',
+        message: 'SMTP_USER environment variable is required'
+      });
+    }
+
+    if (!process.env.SMTP_PASS) {
+      console.error('CRITICAL: SMTP_PASS is missing');
+      return res.status(500).json({ 
+        error: 'SMTP_PASS is missing',
+        message: 'SMTP_PASS environment variable is required'
+      });
+    }
+
+    console.log('✅ All required environment variables are present');
+
+    // ============================================
+    // STEP 2: Validate request body
+    // ============================================
     const { to, name, inquiryMessage, replyMessage } = req.body;
 
     console.log('Email send request received');
@@ -47,16 +86,11 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Check SMTP configuration
-    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      console.error('SMTP configuration missing');
-      return res.status(500).json({ 
-        error: 'SMTP 서버 설정이 완료되지 않았습니다.',
-        details: 'SMTP_HOST, SMTP_USER, SMTP_PASS 환경 변수가 필요합니다.'
-      });
-    }
-
-    // Configure SMTP transporter
+    // ============================================
+    // STEP 3: Configure SMTP transporter for Vercel
+    // ============================================
+    console.log('Configuring SMTP transporter...');
+    
     const smtpPort = parseInt(process.env.SMTP_PORT || '587');
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -69,9 +103,25 @@ module.exports = async (req, res) => {
       tls: {
         rejectUnauthorized: false, // Required for Worksmobile SMTP compatibility
       },
+      // Timeout settings for Vercel
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 10000, // 10 seconds
+      socketTimeout: 10000, // 10 seconds
     });
 
-    // Generate email text (plain text version)
+    console.log('SMTP transporter configured:', {
+      host: process.env.SMTP_HOST,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      user: process.env.SMTP_USER,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+    });
+
+    // ============================================
+    // STEP 4: Generate minimal email content (text-only)
+    // ============================================
     const emailText = `안녕하세요 ${name}님, 와이즈인컴퍼니의 서비스에 대한 문의를 주셔서 감사합니다.
 
 귀하는 아래와 같은 문의를 주셨습니다:
@@ -96,101 +146,9 @@ www.wiseinc.co.kr
 02-558-5146
 wic@wiseinc.co.kr`;
 
-    // Generate email HTML (HTML version)
-    const emailHTML = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      line-height: 1.6;
-      color: #333;
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 20px;
-      background-color: #f5f5f5;
-    }
-    .email-container {
-      background-color: #ffffff;
-      padding: 30px;
-      border-radius: 8px;
-    }
-    p {
-      margin: 15px 0;
-    }
-    hr {
-      border: none;
-      border-top: 1px solid #e0e0e0;
-      margin: 20px 0;
-    }
-    .section-label {
-      font-weight: bold;
-      color: #0066cc;
-      margin: 20px 0 10px 0;
-      display: block;
-    }
-    .message-block {
-      background-color: #f9f9f9;
-      padding: 15px;
-      border-left: 4px solid #0066cc;
-      margin: 10px 0 20px 0;
-      white-space: pre-wrap;
-      font-family: inherit;
-      line-height: 1.6;
-    }
-    .signature {
-      margin-top: 30px;
-      padding-top: 20px;
-      border-top: 1px solid #e0e0e0;
-      font-size: 14px;
-      line-height: 1.8;
-    }
-    .signature strong {
-      display: block;
-      margin-bottom: 10px;
-      font-size: 16px;
-    }
-  </style>
-</head>
-<body>
-  <div class="email-container">
-    <p>안녕하세요 ${name}님, 와이즈인컴퍼니의 서비스에 대한 문의를 주셔서 감사합니다.</p>
-    
-    <p>귀하는 아래와 같은 문의를 주셨습니다:</p>
-    
-    <hr />
-    
-    <strong class="section-label">[문의 내용]</strong>
-    <div class="message-block">${inquiryMessage}</div>
-    
-    <hr />
-    
-    <p>저희가 검토한 결과 문의에 대한 답변은 다음과 같습니다:</p>
-    
-    <strong class="section-label">[답변]</strong>
-    <div class="message-block">${replyMessage}</div>
-    
-    <hr />
-    
-    <p>더 궁금한 사항이 있으시면 언제든 연락주시기 바랍니다.</p>
-    
-    <p>항상 최선을 다하는 와이즈인컴퍼니가 되겠습니다.</p>
-    
-    <div class="signature">
-      <strong>WiseIN Company</strong>
-      데이터와 AI로 여는 비즈니스의 세계<br />
-      서울시 강남구 역삼로309 기성빌딩3층<br />
-      www.wiseinc.co.kr<br />
-      02-558-5144<br />
-      02-558-5146<br />
-      wic@wiseinc.co.kr
-    </div>
-  </div>
-</body>
-</html>`;
-
+    // ============================================
+    // STEP 5: Send email
+    // ============================================
     console.log('Attempting to send email...');
     
     const mailOptions = {
@@ -198,11 +156,11 @@ wic@wiseinc.co.kr`;
       to: to,
       subject: '와이즈인컴퍼니입니다(문의 답변)',
       text: emailText,
-      html: emailHTML,
+      // HTML removed for now to ensure SMTP success
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent successfully:', info.messageId);
+    console.log('✅ Email sent successfully:', info.messageId);
     console.log('   Response:', info.response);
 
     return res.status(200).json({ 
@@ -210,14 +168,23 @@ wic@wiseinc.co.kr`;
       messageId: info.messageId 
     });
   } catch (error) {
-    console.error('Error sending email:', error);
-    
-    let errorMessage = '이메일 전송에 실패했습니다.';
+    // ============================================
+    // STEP 6: Error transparency
+    // ============================================
+    console.error('❌ Error sending email:', error);
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error stack:', error.stack);
+
+    // Return error.message AND error.code (if exists)
+    let errorMessage = error.message || '이메일 전송에 실패했습니다.';
+    let errorCode = error.code || 'UNKNOWN';
     let errorDetails = '';
 
     if (error.code === 'EAUTH') {
       errorMessage = 'SMTP 인증 실패';
-      errorDetails = '이메일 주소와 비밀번호를 확인하세요. Gmail 사용 시 앱 비밀번호를 사용해야 합니다.';
+      errorDetails = '이메일 주소와 비밀번호를 확인하세요. Worksmobile 사용 시 계정 정보를 확인하세요.';
     } else if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT') {
       errorMessage = 'SMTP 서버에 연결할 수 없습니다';
       errorDetails = `SMTP 서버(${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587})에 연결할 수 없습니다. 방화벽이나 네트워크 설정을 확인하세요.`;
@@ -228,21 +195,19 @@ wic@wiseinc.co.kr`;
       errorMessage = `SMTP 서버 오류: ${error.response}`;
       errorDetails = error.responseCode ? `응답 코드: ${error.responseCode}` : '';
     } else {
+      // Use the actual error message
       errorDetails = error.message || '알 수 없는 오류';
     }
 
-    console.error('Error details:', {
-      code: error.code,
-      command: error.command,
-      response: error.response,
-      responseCode: error.responseCode,
-      message: error.message,
-    });
-
+    // Do NOT return empty objects - always return meaningful error information
     return res.status(500).json({ 
       error: errorMessage,
+      message: error.message || errorMessage, // Include original error message
+      code: errorCode,
       details: errorDetails,
-      code: error.code || 'UNKNOWN'
+      // Include additional error info for debugging
+      ...(error.response && { response: error.response }),
+      ...(error.responseCode && { responseCode: error.responseCode }),
     });
   }
 };
