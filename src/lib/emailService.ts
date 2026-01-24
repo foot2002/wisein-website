@@ -10,10 +10,9 @@ export interface EmailData {
 
 export async function sendInquiryReplyEmail(data: EmailData): Promise<{ success: boolean; error?: string }> {
   try {
-    // Email server runs on port 3001
-    // Use environment variable if set, otherwise default to localhost:3001
-    const emailServerUrl = import.meta.env.VITE_EMAIL_API_URL || 'http://localhost:3001';
-    const apiUrl = `${emailServerUrl}/api/send-email`;
+    // Always use Vercel Serverless Function at /api/send-email
+    // This works in both production (Vercel) and local development (Vercel CLI)
+    const apiUrl = '/api/send-email';
     
     console.log('Sending email to:', apiUrl);
     console.log('Email data:', { to: data.to, name: data.name });
@@ -44,7 +43,7 @@ export async function sendInquiryReplyEmail(data: EmailData): Promise<{ success:
       
       // 네트워크 에러인 경우
       if (response.status === 0 || !response.status) {
-        return { success: false, error: '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요. (npm run server)' };
+        return { success: false, error: '서버에 연결할 수 없습니다. Vercel Serverless Function이 배포되었는지 확인하세요.' };
       }
       
       return { success: false, error: errorMessage };
@@ -59,7 +58,7 @@ export async function sendInquiryReplyEmail(data: EmailData): Promise<{ success:
     let errorMessage = '이메일 전송에 실패했습니다.';
     
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      errorMessage = '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요. (npm run server)';
+      errorMessage = '서버에 연결할 수 없습니다. Vercel Serverless Function이 배포되었는지 확인하세요.';
     } else if (error instanceof Error) {
       errorMessage = error.message;
     }
